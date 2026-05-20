@@ -1,0 +1,14 @@
+.env
+.env.local
+.env.*.local
+node_modules/
+dist/
+build/
+.next/
+artifacts/
+cache/
+.vscode/settings.json
+.DS_Store
+*.log
+venv/
+.hardhat-waffle
