@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { OnchainMarketplace } from "@/components/OnchainMarketplace";
 
 const marketTrends = [
   { day: "Mon", price: 42 },
@@ -67,6 +68,7 @@ export default function Home() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-8">
+        <OnchainMarketplace />
         <section className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <div className="space-y-6">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/50">
@@ -108,13 +110,19 @@ export default function Home() {
                   </span>
                 </div>
 
-                <div className="mt-6 h-[320px] min-h-[320px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="mt-6 h-[320px] min-h-[320px] min-w-0 w-full">
+                  <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minWidth={0}
+                    minHeight={0}
+                    initialDimension={{ width: 640, height: 320 }}
+                  >
                     <LineChart data={marketTrends} margin={{ top: 12, right: 12, left: -8, bottom: 0 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
                       <XAxis dataKey="day" stroke="#64748b" />
                       <YAxis stroke="#64748b" />
-                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                       <Line type="monotone" dataKey="price" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
                     </LineChart>
                   </ResponsiveContainer>
