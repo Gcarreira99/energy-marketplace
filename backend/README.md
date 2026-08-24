@@ -6,7 +6,7 @@ Initial backend integration for the on-chain marketplace.
 
 `GET /v1/marketplace/offers` returns active orders indexed from the marketplace
 events. Numeric blockchain values are returned as strings so they remain safe in
-JSON responses. The initial index is held in memory and is rebuilt from
+JSON responses. Offers are persisted in SQLite and rebuilt from
 `MARKETPLACE_DEPLOYMENT_BLOCK` when the service starts.
 
 ## Settlement endpoint
@@ -24,6 +24,7 @@ Set the required environment variables from `.env.example`:
 - `MARKETPLACE_ADDRESS`: deployed `Marketplace` address
 - `MARKETPLACE_DEPLOYMENT_BLOCK`: first block to scan for marketplace events
 - `FRONTEND_ORIGIN`: allowed browser origin, defaulting to `http://localhost:3000`
+- `DATABASE_PATH`: SQLite file path, defaulting to `./marketplace.sqlite`
 
 Run locally after installing dependencies:
 
