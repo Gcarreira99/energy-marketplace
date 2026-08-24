@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatEther } from "viem";
 import {
   useAccount,
@@ -12,8 +12,19 @@ import {
 } from "wagmi";
 import { marketplaceAbi, marketplaceAddress } from "@/lib/contracts";
 
+type ActiveOffer = {
+  orderId: string;
+  seller: string;
+  quantity: string;
+  priceWei: string;
+  timestamp: string;
+  active: boolean;
+};
+
 export function OnchainMarketplace() {
   const [orderId, setOrderId] = useState("1");
+  const [offers, setOffers] = useState<ActiveOffer[]>([]);
+  const [offersError, setOffersError] = useState<string | null>(null);
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
@@ -21,6 +32,19 @@ export function OnchainMarketplace() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
   const numericOrderId = BigInt(orderId || "0");
   const contractConfigured = Boolean(process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS);
+  useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:3001";
+    fetch(`${apiUrl}/v1/marketplace/offers`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Offers API unavailable");
+        return response.json() as Promise<ActiveOffer[]>;
+      })
+      .then((activeOffers) => {
+        setOffers(activeOffers);
+        setOffersError(null);
+      })
+      .catch(() => setOffersError("Connect the backend to load indexed offers."));
+  }, []);
   const { data: order, isLoading: isReading, refetch } = useReadContract({
     address: marketplaceAddress,
     abi: marketplaceAbi,
@@ -84,6 +108,21 @@ export function OnchainMarketplace() {
         <button disabled={!isConnected || !order?.active || isPending || isConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
           {isPending ? "Confirm in wallet..." : isConfirming ? "Confirming..." : "Buy energy"}
         </button>
+      </div>
+
+      <div className="mt-6 border-t border-slate-800 pt-5">
+        <p className="text-sm font-medium text-slate-300">Indexed active offers</p>
+        {offers.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {offers.map((offer) => (
+              <button key={offer.orderId} onClick={() => setOrderId(offer.orderId)} className="rounded-full border border-slate-700 px-3 py-2 text-left text-sm text-slate-200 hover:border-cyan-300">
+                Order #{offer.orderId} · {offer.quantity} kWh · {formatEther(BigInt(offer.priceWei))} ETH
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-slate-400">{offersError ?? "No active offers indexed."}</p>
+        )}
       </div>
 
       {hash && <p className="mt-4 text-sm text-slate-300">Transaction: {hash.slice(0, 12)}...</p>}

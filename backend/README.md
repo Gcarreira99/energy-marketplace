@@ -2,6 +2,13 @@
 
 Initial backend integration for the on-chain marketplace.
 
+## Offers endpoint
+
+`GET /v1/marketplace/offers` returns active orders indexed from the marketplace
+events. Numeric blockchain values are returned as strings so they remain safe in
+JSON responses. The initial index is held in memory and is rebuilt from
+`MARKETPLACE_DEPLOYMENT_BLOCK` when the service starts.
+
 ## Settlement endpoint
 
 `POST /v1/transactions/:orderId/settle`
@@ -15,6 +22,8 @@ Set the required environment variables from `.env.example`:
 - `RPC_URL`: JSON-RPC endpoint
 - `BACKEND_PRIVATE_KEY`: funded signer used to submit transactions
 - `MARKETPLACE_ADDRESS`: deployed `Marketplace` address
+- `MARKETPLACE_DEPLOYMENT_BLOCK`: first block to scan for marketplace events
+- `FRONTEND_ORIGIN`: allowed browser origin, defaulting to `http://localhost:3000`
 
 Run locally after installing dependencies:
 
