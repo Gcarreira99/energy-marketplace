@@ -72,3 +72,36 @@ DAO-style governance system for:
 
 ### Posterior Features
 Addition of AI features to improve overall the system.
+
+## Run Locally
+
+Install the dependencies once:
+
+```shell
+npm install --prefix smart-contracts
+npm install --prefix backend
+npm install --prefix frontend
+```
+
+Then start the complete local application from the repository root:
+
+```shell
+npm run dev
+```
+
+The command starts a fresh local blockchain, deploys the contracts, generates
+the ignored local environment files, and starts the backend and frontend.
+Open <http://localhost:3000> when the startup logs show both services running.
+
+Use a browser wallet connected to:
+
+```text
+Network: Localhost
+RPC URL: http://127.0.0.1:8545
+Chain ID: 31337
+Currency: ETH
+```
+
+Import one of the funded accounts printed by the local blockchain startup.
+Press `Ctrl+C` to stop all services. Each new run resets the local chain and
+SQLite database, so existing local offers are not preserved.

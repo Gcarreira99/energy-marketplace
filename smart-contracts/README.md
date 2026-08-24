@@ -26,6 +26,10 @@ order is created. Prices are denominated in wei and paid with native ETH.
 
 ## Development
 
+From the repository root, `npm run dev` starts the local node, deploys the
+contracts, and starts the backend and frontend automatically. The commands
+below are useful when working on contracts independently.
+
 Install dependencies and run the test suite:
 
 ```shell

@@ -14,3 +14,4 @@ cache/
 *.tsbuildinfo
 venv/
 .hardhat-waffle
+smart-contracts/ignition/deployments/
