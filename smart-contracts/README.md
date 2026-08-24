@@ -1,57 +1,52 @@
-# Sample Hardhat 3 Beta Project (`mocha` and `ethers`)
+# Energy Marketplace Smart Contracts
 
-This project showcases a Hardhat 3 Beta project using `mocha` for tests and the `ethers` library for Ethereum interactions.
+This Hardhat project contains the first version of the energy marketplace contracts.
 
-To learn more about the Hardhat 3 Beta, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3 Beta](https://hardhat.org/hardhat3-beta-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+## Contracts
 
-## Project Overview
+### EnergyToken
 
-This example project includes:
+`EnergyToken` is an owner-controlled ERC-20 token. One token represents one whole
+kilowatt-hour, so the token uses zero decimals.
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using `mocha` and ethers.js
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+- `mint(address to, uint256 amount)` creates energy units. Owner only.
+- `burn(address from, uint256 amount)` retires energy units. Owner only.
+- Standard ERC-20 transfers and allowances are available.
 
-## Usage
+### Marketplace
 
-### Running Tests
+`Marketplace` uses full-fill sell orders and escrows the energy tokens when an
+order is created. Prices are denominated in wei and paid with native ETH.
 
-To run all the tests in the project, execute the following command:
+1. The seller approves the marketplace for the energy quantity.
+2. The seller calls `createSellOrder(quantity, price)`.
+3. A buyer calls `buyEnergy(orderId)` with exactly `price` wei.
+4. The marketplace sends the energy to the buyer and the ETH to the seller.
+5. The seller can call `cancelOrder(orderId)` before purchase to recover escrow.
+
+## Development
+
+Install dependencies and run the test suite:
 
 ```shell
-npx hardhat test
+npm install
+npm test
 ```
 
-You can also selectively run the Solidity or `mocha` tests:
+Compile contracts directly with:
 
 ```shell
-npx hardhat test solidity
-npx hardhat test mocha
+npx hardhat compile
 ```
 
-### Make a deployment to Sepolia
-
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
-
-To run the deployment to a local chain:
+Deploy both contracts to a local simulated network:
 
 ```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
+npx hardhat ignition deploy ignition/modules/EnergyMarketplace.ts
 ```
 
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
-
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
-
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
+For Sepolia, configure `SEPOLIA_RPC_URL` and `SEPOLIA_PRIVATE_KEY`, then run:
 
 ```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
-
-After setting the variable, you can run the deployment with the Sepolia network:
-
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
+npx hardhat ignition deploy --network sepolia ignition/modules/EnergyMarketplace.ts
 ```
