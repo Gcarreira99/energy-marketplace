@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "test": "tsx --test test/**/*.test.ts",
     "start:dev": "nest start --watch",
     "start": "node dist/main.js"
   },
@@ -24,6 +25,7 @@
     "@nestjs/testing": "^11.1.6",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.19.19",
+    "tsx": "^4.20.6",
     "typescript": "~5.8.0"
   }
 }

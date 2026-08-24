@@ -1,6 +1,7 @@
 .env
 .env.local
 .env.*.local
+.env*
 node_modules/
 dist/
 build/
@@ -10,5 +11,6 @@ cache/
 .vscode/settings.json
 .DS_Store
 *.log
+*.tsbuildinfo
 venv/
 .hardhat-waffle
