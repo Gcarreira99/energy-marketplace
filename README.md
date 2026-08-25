@@ -31,9 +31,8 @@ connect wallet -> approve ENRG -> create offer -> index active offer
 
 ## Home Page Screenshot
 
-![Energy Marketplace home page main info](docs/images/HomePage_EM.png)
-
-![Energy Marketplace home page with placeholder info](docs/images/HomePage_EM_2.png)
+<img src="docs/images/HomePage_EM.png" width="100%"><br>
+<img src="docs/images/HomePage_EM_2.png" width="100%">
 
 ## Technology
 
