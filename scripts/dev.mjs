@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
 const contractsDir = join(root, "smart-contracts");
@@ -67,6 +67,36 @@ async function isHttpAvailable(url) {
   }
 }
 
+function getPortOwners(port) {
+  try {
+    const output = execSync(`lsof -t -i tcp:${port} || true`, { encoding: "utf8" });
+    return output
+      .split(/\n/)
+      .map((line) => Number.parseInt(line.trim(), 10))
+      .filter((pid) => Number.isFinite(pid) && pid !== process.pid);
+  } catch {
+    return [];
+  }
+}
+
+function stopProjectProcesses() {
+  const ports = [8545, 3001, 3000];
+  const pidSet = new Set();
+
+  for (const port of ports) {
+    for (const pid of getPortOwners(port)) {
+      pidSet.add(pid);
+    }
+  }
+
+  for (const pid of pidSet) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+    }
+  }
+}
+
 function writeConfiguration(privateKey) {
   const addresses = JSON.parse(readFileSync(addressesFile, "utf8"));
   const marketplaceAddress = addresses["EnergyMarketplaceModule#Marketplace"];
@@ -107,8 +137,19 @@ try {
     throw new Error("Dependencies are missing. Run npm install in smart-contracts, backend, and frontend first.");
   }
 
-  const rpcAlreadyRunning = await isRpcAvailable();
-  if (rpcAlreadyRunning) {
+  const staleProcesses = new Set();
+  for (const port of [8545, 3001, 3000]) {
+    for (const pid of getPortOwners(port)) {
+      staleProcesses.add(pid);
+    }
+  }
+  if (staleProcesses.size > 0) {
+    console.log("Stopping stale local project processes before startup...");
+    stopProjectProcesses();
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 800));
+  }
+
+  if (await isRpcAvailable()) {
     console.log("Local blockchain already running on http://127.0.0.1:8545. Skipping fresh startup.");
   } else {
     rmSync(deploymentDir, { recursive: true, force: true });
