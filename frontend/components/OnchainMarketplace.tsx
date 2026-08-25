@@ -145,6 +145,30 @@ export function OnchainMarketplace() {
     void refetch();
   }, [buySuccess, refetch]);
 
+  useEffect(() => {
+    if (buyError || approvalError || createError) {
+      setPendingCreateStep(null);
+    }
+  }, [approvalError, buyError, createError]);
+
+  const actionStatus = pendingCreateStep === "approve"
+    ? "Approving token for marketplace escrow..."
+    : pendingCreateStep === "create"
+      ? "Submitting sell order..."
+      : isBuyPending
+        ? "Waiting for buy confirmation..."
+        : isApprovalPending
+          ? "Waiting for approval confirmation..."
+          : isCreatePending
+            ? "Waiting for offer confirmation..."
+            : isBuyConfirming
+              ? "Confirming purchase..."
+              : isApprovalConfirming
+                ? "Approving token..."
+                : isCreateConfirming
+                  ? "Confirming sell order..."
+                  : null;
+
   return (
     <section className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/30">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -204,11 +228,17 @@ export function OnchainMarketplace() {
           </label>
         </div>
         <button
-          disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming}
+          disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming || pendingCreateStep !== null}
           onClick={submitOffer}
           className="mt-4 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {pendingCreateStep === "approve" ? "Approving token..." : pendingCreateStep === "create" ? "Listing offer..." : isApprovalPending || isCreatePending ? "Awaiting wallet..." : "Create offer"}
+          {pendingCreateStep === "approve"
+            ? "Approving token..."
+            : pendingCreateStep === "create"
+              ? "Listing offer..."
+              : isApprovalPending || isCreatePending
+                ? "Awaiting wallet..."
+                : "Create offer"}
         </button>
       </div>
 
@@ -227,7 +257,8 @@ export function OnchainMarketplace() {
         )}
       </div>
 
-      {buyHash && <p className="mt-4 text-sm text-slate-300">Transaction: {buyHash.slice(0, 12)}...</p>}
+      {actionStatus && <p className="mt-4 text-sm text-cyan-300">{actionStatus}</p>}
+      {buyHash && <p className="mt-2 text-sm text-slate-300">Transaction: {buyHash.slice(0, 12)}...</p>}
       {buySuccess && <p className="mt-2 text-sm text-emerald-300">Purchase confirmed. <button onClick={() => refetch()} className="underline">Refresh order</button></p>}
       {approvalHash && <p className="mt-2 text-sm text-slate-300">Approval tx: {approvalHash.slice(0, 12)}...</p>}
       {createHash && <p className="mt-2 text-sm text-slate-300">Offer tx: {createHash.slice(0, 12)}...</p>}
