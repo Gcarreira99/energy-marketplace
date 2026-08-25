@@ -107,6 +107,12 @@ cd backend
 npm run build
 ```
 
+To update semver:
+
+```shell
+npm run release
+```
+
 ## Current Limitations
 
 - Orders are full-fill only; partial fills, edits, expiry, fees, and stablecoin
