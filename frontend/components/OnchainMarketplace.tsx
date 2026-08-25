@@ -38,6 +38,20 @@ export function OnchainMarketplace() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
+
+  function refreshOffers() {
+    const apiUrl = process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:3001";
+    fetch(`${apiUrl}/v1/marketplace/offers`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Offers API unavailable");
+        return response.json() as Promise<ActiveOffer[]>;
+      })
+      .then((activeOffers) => {
+        setOffers(activeOffers);
+        setOffersError(null);
+      })
+      .catch(() => setOffersError("Connect the backend to load indexed offers."));
+  }
   const {
     data: buyHash,
     error: buyError,
@@ -63,17 +77,7 @@ export function OnchainMarketplace() {
   const contractConfigured = Boolean(process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS);
 
   useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:3001";
-    fetch(`${apiUrl}/v1/marketplace/offers`)
-      .then((response) => {
-        if (!response.ok) throw new Error("Offers API unavailable");
-        return response.json() as Promise<ActiveOffer[]>;
-      })
-      .then((activeOffers) => {
-        setOffers(activeOffers);
-        setOffersError(null);
-      })
-      .catch(() => setOffersError("Connect the backend to load indexed offers."));
+    refreshOffers();
   }, []);
 
   const { data: order, isLoading: isReading, refetch } = useReadContract({
@@ -131,8 +135,15 @@ export function OnchainMarketplace() {
     if (pendingCreateStep !== "create" || !createSuccess || !createHash) return;
     setPendingCreateStep(null);
     setOrderId("1");
+    refreshOffers();
     void refetch();
   }, [createHash, createSuccess, pendingCreateStep, refetch]);
+
+  useEffect(() => {
+    if (!buySuccess) return;
+    refreshOffers();
+    void refetch();
+  }, [buySuccess, refetch]);
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/30">
