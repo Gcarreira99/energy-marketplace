@@ -10,7 +10,12 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
-import { marketplaceAbi, marketplaceAddress } from "@/lib/contracts";
+import {
+  energyTokenAbi,
+  energyTokenAddress,
+  marketplaceAbi,
+  marketplaceAddress,
+} from "@/lib/contracts";
 
 type ActiveOffer = {
   orderId: string;
@@ -21,17 +26,42 @@ type ActiveOffer = {
   active: boolean;
 };
 
+type PendingCreateStep = "approve" | "create" | null;
+
 export function OnchainMarketplace() {
   const [orderId, setOrderId] = useState("1");
+  const [quantityInput, setQuantityInput] = useState("4");
+  const [priceInput, setPriceInput] = useState("100");
   const [offers, setOffers] = useState<ActiveOffer[]>([]);
   const [offersError, setOffersError] = useState<string | null>(null);
+  const [pendingCreateStep, setPendingCreateStep] = useState<PendingCreateStep>(null);
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
-  const { data: hash, error: writeError, isPending, writeContract } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const {
+    data: buyHash,
+    error: buyError,
+    isPending: isBuyPending,
+    writeContract: writeBuy,
+  } = useWriteContract();
+  const {
+    data: approvalHash,
+    error: approvalError,
+    isPending: isApprovalPending,
+    writeContract: writeApproval,
+  } = useWriteContract();
+  const {
+    data: createHash,
+    error: createError,
+    isPending: isCreatePending,
+    writeContract: writeCreate,
+  } = useWriteContract();
+  const { isLoading: isBuyConfirming, isSuccess: buySuccess } = useWaitForTransactionReceipt({ hash: buyHash });
+  const { isLoading: isApprovalConfirming, isSuccess: approvalSuccess } = useWaitForTransactionReceipt({ hash: approvalHash });
+  const { isLoading: isCreateConfirming, isSuccess: createSuccess } = useWaitForTransactionReceipt({ hash: createHash });
   const numericOrderId = BigInt(orderId || "0");
   const contractConfigured = Boolean(process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS);
+
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:3001";
     fetch(`${apiUrl}/v1/marketplace/offers`)
@@ -45,6 +75,7 @@ export function OnchainMarketplace() {
       })
       .catch(() => setOffersError("Connect the backend to load indexed offers."));
   }, []);
+
   const { data: order, isLoading: isReading, refetch } = useReadContract({
     address: marketplaceAddress,
     abi: marketplaceAbi,
@@ -55,7 +86,7 @@ export function OnchainMarketplace() {
 
   function buyOrder() {
     if (!order || !contractConfigured) return;
-    writeContract({
+    writeBuy({
       address: marketplaceAddress,
       abi: marketplaceAbi,
       functionName: "buyEnergy",
@@ -63,6 +94,45 @@ export function OnchainMarketplace() {
       value: order.price,
     });
   }
+
+  function submitOffer() {
+    const quantity = BigInt(quantityInput || "0");
+    const price = BigInt(priceInput || "0");
+    if (!isConnected || !contractConfigured || quantity <= 0n || price <= 0n) {
+      return;
+    }
+
+    setPendingCreateStep("approve");
+    writeApproval({
+      address: energyTokenAddress,
+      abi: energyTokenAbi,
+      functionName: "approve",
+      args: [marketplaceAddress, quantity],
+    });
+  }
+
+  useEffect(() => {
+    if (pendingCreateStep !== "approve" || !approvalSuccess || !approvalHash) return;
+
+    const quantity = BigInt(quantityInput || "0");
+    const price = BigInt(priceInput || "0");
+    if (quantity <= 0n || price <= 0n) return;
+
+    setPendingCreateStep("create");
+    writeCreate({
+      address: marketplaceAddress,
+      abi: marketplaceAbi,
+      functionName: "createSellOrder",
+      args: [quantity, price],
+    });
+  }, [approvalHash, approvalSuccess, pendingCreateStep, priceInput, quantityInput, writeCreate]);
+
+  useEffect(() => {
+    if (pendingCreateStep !== "create" || !createSuccess || !createHash) return;
+    setPendingCreateStep(null);
+    setOrderId("1");
+    void refetch();
+  }, [createHash, createSuccess, pendingCreateStep, refetch]);
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/30">
@@ -105,8 +175,29 @@ export function OnchainMarketplace() {
             </div>
           ) : "No order found"}
         </div>
-        <button disabled={!isConnected || !order?.active || isPending || isConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
-          {isPending ? "Confirm in wallet..." : isConfirming ? "Confirming..." : "Buy energy"}
+        <button disabled={!isConnected || !order?.active || isBuyPending || isBuyConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
+          {isBuyPending ? "Confirm in wallet..." : isBuyConfirming ? "Confirming..." : "Buy energy"}
+        </button>
+      </div>
+
+      <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+        <p className="text-sm font-medium text-slate-300">Create a sell offer</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="text-sm text-slate-300">
+            Quantity (kWh)
+            <input value={quantityInput} onChange={(event) => setQuantityInput(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-300" />
+          </label>
+          <label className="text-sm text-slate-300">
+            Price (wei)
+            <input value={priceInput} onChange={(event) => setPriceInput(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-300" />
+          </label>
+        </div>
+        <button
+          disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming}
+          onClick={submitOffer}
+          className="mt-4 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {pendingCreateStep === "approve" ? "Approving token..." : pendingCreateStep === "create" ? "Listing offer..." : isApprovalPending || isCreatePending ? "Awaiting wallet..." : "Create offer"}
         </button>
       </div>
 
@@ -125,9 +216,12 @@ export function OnchainMarketplace() {
         )}
       </div>
 
-      {hash && <p className="mt-4 text-sm text-slate-300">Transaction: {hash.slice(0, 12)}...</p>}
-      {isSuccess && <p className="mt-2 text-sm text-emerald-300">Purchase confirmed. <button onClick={() => refetch()} className="underline">Refresh order</button></p>}
-      {writeError && <p className="mt-2 text-sm text-rose-300">{writeError.message.slice(0, 160)}</p>}
+      {buyHash && <p className="mt-4 text-sm text-slate-300">Transaction: {buyHash.slice(0, 12)}...</p>}
+      {buySuccess && <p className="mt-2 text-sm text-emerald-300">Purchase confirmed. <button onClick={() => refetch()} className="underline">Refresh order</button></p>}
+      {approvalHash && <p className="mt-2 text-sm text-slate-300">Approval tx: {approvalHash.slice(0, 12)}...</p>}
+      {createHash && <p className="mt-2 text-sm text-slate-300">Offer tx: {createHash.slice(0, 12)}...</p>}
+      {createSuccess && <p className="mt-2 text-sm text-emerald-300">Offer created successfully.</p>}
+      {(buyError || approvalError || createError) && <p className="mt-2 text-sm text-rose-300">{(buyError ?? approvalError ?? createError)?.message.slice(0, 160)}</p>}
     </section>
   );
 }

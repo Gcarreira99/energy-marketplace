@@ -3,6 +3,19 @@ import type { Address } from "viem";
 export const marketplaceAddress = (process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS ?? "") as Address;
 export const energyTokenAddress = (process.env.NEXT_PUBLIC_ENERGY_TOKEN_ADDRESS ?? "") as Address;
 
+export const energyTokenAbi = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "value", type: "uint256" },
+    ],
+    outputs: [{ name: "approved", type: "bool" }],
+  },
+] as const;
+
 export const marketplaceAbi = [
   {
     type: "function",
@@ -27,5 +40,15 @@ export const marketplaceAbi = [
     stateMutability: "payable",
     inputs: [{ name: "orderId", type: "uint256" }],
     outputs: [],
+  },
+  {
+    type: "function",
+    name: "createSellOrder",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "quantity", type: "uint256" },
+      { name: "price", type: "uint256" },
+    ],
+    outputs: [{ name: "orderId", type: "uint256" }],
   },
 ] as const;
