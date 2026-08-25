@@ -3,12 +3,29 @@ import { join, resolve } from "node:path";
 import { execSync, spawn } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
+const rootEnvFile = join(root, ".env");
+if (existsSync(rootEnvFile)) {
+  for (const line of readFileSync(rootEnvFile, "utf8").split(/\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2];
+  }
+}
 const contractsDir = join(root, "smart-contracts");
 const backendDir = join(root, "backend");
 const frontendDir = join(root, "frontend");
 const deploymentDir = join(contractsDir, "ignition", "deployments", "chain-31337");
 const addressesFile = join(deploymentDir, "deployed_addresses.json");
 const databaseFile = join(backendDir, "marketplace.sqlite");
+const rpcUrl = process.env.DEV_RPC_URL;
+const backendUrl = process.env.DEV_BACKEND_URL;
+const frontendUrl = process.env.DEV_FRONTEND_URL;
+const backendPort = process.env.DEV_BACKEND_PORT;
+const frontendPort = process.env.DEV_FRONTEND_PORT;
+const localWalletAddress = process.env.DEV_LOCAL_WALLET_ADDRESS;
+const ownerPrivateKey = process.env.DEV_OWNER_PRIVATE_KEY;
+if (!rpcUrl || !backendUrl || !frontendUrl || !backendPort || !frontendPort || !localWalletAddress || !ownerPrivateKey) {
+  throw new Error("DEV_RPC_URL, DEV_BACKEND_URL, DEV_FRONTEND_URL, DEV_BACKEND_PORT, DEV_FRONTEND_PORT, DEV_LOCAL_WALLET_ADDRESS, and DEV_OWNER_PRIVATE_KEY are required in .env");
+}
 const children = new Set();
 let shuttingDown = false;
 
@@ -26,9 +43,9 @@ function commandFor(command, args, cwd, env = {}) {
   return child;
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, env = {}) {
   return new Promise((resolvePromise, reject) => {
-    const child = commandFor(command, args, cwd);
+    const child = commandFor(command, args, cwd, env);
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolvePromise();
@@ -39,7 +56,7 @@ function run(command, args, cwd) {
 
 async function isRpcAvailable() {
   try {
-    const response = await fetch("http://127.0.0.1:8545", {
+    const response = await fetch(rpcUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
@@ -60,7 +77,7 @@ async function isDeploymentAvailable() {
       addresses["EnergyMarketplaceModule#Marketplace"],
     ];
     for (const address of contractAddresses) {
-      const response = await fetch("http://127.0.0.1:8545", {
+      const response = await fetch(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getCode", params: [address, "latest"] }),
@@ -68,6 +85,23 @@ async function isDeploymentAvailable() {
       const result = await response.json();
       if (!result.result || result.result === "0x") return false;
     }
+
+    if (!localWalletAddress) return false;
+    const balanceResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [{
+          to: addresses["EnergyMarketplaceModule#EnergyToken"],
+          data: `0x70a08231${localWalletAddress.slice(2).padStart(64, "0")}`,
+        }, "latest"],
+      }),
+    });
+    const balanceResult = await balanceResponse.json();
+    if (!balanceResult.result || BigInt(balanceResult.result) === 0n) return false;
     return true;
   } catch {
     return false;
@@ -79,7 +113,7 @@ async function waitForRpc() {
     if (await isRpcAvailable()) return;
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
   }
-  throw new Error("Hardhat node did not become ready on http://127.0.0.1:8545");
+  throw new Error(`Hardhat node did not become ready on ${rpcUrl}`);
 }
 
 async function isHttpAvailable(url) {
@@ -106,7 +140,7 @@ function getProjectPids() {
           `${projectPrefix}/smart-contracts/node_modules/.bin/hardhat node`,
           `${projectPrefix}/backend/node_modules/.bin/nest start --watch`,
           `${projectPrefix}/frontend/node_modules/.bin/next dev`,
-          "node scripts/dev.mjs",
+          `node ${join(root, "scripts/dev.mjs")}`,
         ].some((pattern) => command.includes(pattern));
         if (!matchesProjectProcess) return [];
         const pid = Number.parseInt(pidString, 10);
@@ -136,16 +170,16 @@ function writeConfiguration(privateKey) {
   }
 
   const backendEnv = {
-    RPC_URL: "http://127.0.0.1:8545",
+    RPC_URL: rpcUrl,
     BACKEND_PRIVATE_KEY: privateKey,
     MARKETPLACE_ADDRESS: marketplaceAddress,
     MARKETPLACE_DEPLOYMENT_BLOCK: "0",
-    FRONTEND_ORIGIN: "http://localhost:3000",
-    PORT: "3001",
+    FRONTEND_ORIGIN: frontendUrl,
+    PORT: backendPort,
     DATABASE_PATH: "./marketplace.sqlite",
   };
   writeFileSync(join(backendDir, ".env"), Object.entries(backendEnv).map(([key, value]) => `${key}=${value}`).join("\n") + "\n");
-  writeFileSync(join(frontendDir, ".env.local"), `NEXT_PUBLIC_CHAIN=hardhat\nNEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545\nNEXT_PUBLIC_MARKETPLACE_ADDRESS=${marketplaceAddress}\nNEXT_PUBLIC_ENERGY_TOKEN_ADDRESS=${energyTokenAddress}\nNEXT_PUBLIC_MARKETPLACE_API_URL=http://localhost:3001\n`);
+  writeFileSync(join(frontendDir, ".env.local"), `NEXT_PUBLIC_CHAIN=hardhat\nNEXT_PUBLIC_RPC_URL=${rpcUrl}\nNEXT_PUBLIC_USE_LOCAL_WALLET=true\nNEXT_PUBLIC_LOCAL_WALLET_ADDRESS=${localWalletAddress}\nNEXT_PUBLIC_MARKETPLACE_ADDRESS=${marketplaceAddress}\nNEXT_PUBLIC_ENERGY_TOKEN_ADDRESS=${energyTokenAddress}\nNEXT_PUBLIC_MARKETPLACE_API_URL=${backendUrl}\n`);
 
   return { marketplaceAddress, backendEnv };
 }
@@ -186,7 +220,7 @@ try {
   const rpcAvailable = await isRpcAvailable();
   const deploymentAvailable = rpcAvailable && await isDeploymentAvailable();
   if (deploymentAvailable) {
-    console.log("Local blockchain already running on http://127.0.0.1:8545. Skipping fresh startup.");
+    console.log(`Local blockchain already running on ${rpcUrl}. Skipping fresh startup.`);
   } else {
     let nodeOutput = "";
     rmSync(deploymentDir, { recursive: true, force: true });
@@ -204,6 +238,11 @@ try {
 
     console.log("Deploying contracts...");
     await run("npx", ["hardhat", "ignition", "deploy", "--network", "localhost", "ignition/modules/EnergyMarketplace.ts", "--reset"], contractsDir);
+    await run("npx", ["hardhat", "run", "scripts/seed-local.ts", "--network", "localhost"], contractsDir, {
+      RPC_URL: rpcUrl,
+      LOCAL_WALLET_ADDRESS: localWalletAddress,
+      OWNER_PRIVATE_KEY: ownerPrivateKey,
+    });
     const privateKey = nodeOutput.match(/Private Key:\s*(0x[0-9a-fA-F]+)/)?.[1]
       ?? readFileSync(join(backendDir, ".env"), "utf8").match(/BACKEND_PRIVATE_KEY=(.+)/)?.[1];
     if (!privateKey) throw new Error("Could not read a funded private key from Hardhat.");
@@ -211,24 +250,24 @@ try {
     console.log(`Contracts ready. Marketplace: ${marketplaceAddress}`);
     console.log("Starting backend and frontend. Press Ctrl+C to stop everything.\n");
     commandFor("npm", ["run", "start:dev"], backendDir, backendEnv);
-    commandFor("npm", ["run", "dev"], frontendDir);
+    commandFor("npm", ["run", "dev"], frontendDir, { PORT: frontendPort });
     backendStarted = true;
     frontendStarted = true;
   }
 
-  const backendAlreadyRunning = await isHttpAvailable("http://127.0.0.1:3001/v1/marketplace/offers");
+  const backendAlreadyRunning = await isHttpAvailable(`${backendUrl}/v1/marketplace/offers`);
   if (backendAlreadyRunning || backendStarted) {
-    console.log("Backend already running on http://127.0.0.1:3001. Skipping backend startup.");
+    console.log(`Backend already running on ${backendUrl}. Skipping backend startup.`);
   } else {
     const privateKey = readFileSync(join(backendDir, ".env"), "utf8").match(/BACKEND_PRIVATE_KEY=(.+)/)?.[1];
     const marketplaceAddress = readFileSync(join(backendDir, ".env"), "utf8").match(/MARKETPLACE_ADDRESS=(.+)/)?.[1];
     const backendEnv = {
-      RPC_URL: "http://127.0.0.1:8545",
+      RPC_URL: rpcUrl,
       BACKEND_PRIVATE_KEY: privateKey ?? "",
       MARKETPLACE_ADDRESS: marketplaceAddress ?? "",
       MARKETPLACE_DEPLOYMENT_BLOCK: "0",
-      FRONTEND_ORIGIN: "http://localhost:3000",
-      PORT: "3001",
+      FRONTEND_ORIGIN: frontendUrl,
+      PORT: backendPort,
       DATABASE_PATH: "./marketplace.sqlite",
     };
     if (!privateKey || !marketplaceAddress) {
@@ -238,11 +277,11 @@ try {
     commandFor("npm", ["run", "start:dev"], backendDir, backendEnv);
   }
 
-  const frontendAlreadyRunning = await isHttpAvailable("http://127.0.0.1:3000");
+  const frontendAlreadyRunning = await isHttpAvailable(frontendUrl);
   if (!frontendAlreadyRunning && !frontendStarted) {
-    commandFor("npm", ["run", "dev"], frontendDir);
+    commandFor("npm", ["run", "dev"], frontendDir, { PORT: frontendPort });
   } else {
-    console.log("Frontend already running on http://127.0.0.1:3000. Skipping frontend startup.");
+    console.log(`Frontend already running on ${frontendUrl}. Skipping frontend startup.`);
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);

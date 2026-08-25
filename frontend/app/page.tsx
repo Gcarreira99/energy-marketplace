@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { OnchainMarketplace } from "@/components/OnchainMarketplace";
 
 const marketTrends = [
@@ -44,6 +45,15 @@ function formatCurrency(value: number) {
 }
 
 export default function Home() {
+  const { address, isConnected } = useAccount();
+  const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+
+  function connectWallet() {
+    const connector = connectors.find((candidate) => candidate.id === "mock") ?? connectors[0];
+    if (connector) connect({ connector });
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 antialiased">
       <header className="border-b border-slate-200 bg-white/95 backdrop-blur-xl">
@@ -57,11 +67,11 @@ export default function Home() {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
+            <button onClick={() => document.getElementById("onchain-marketplace")?.scrollIntoView({ behavior: "smooth" })} className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
               Create offer
             </button>
-            <button className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">
-              Connect wallet
+            <button onClick={isConnected ? () => disconnect() : connectWallet} className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400">
+              {isConnected ? `${address?.slice(0, 6)}...${address?.slice(-4)}` : "Connect wallet"}
             </button>
           </div>
         </div>

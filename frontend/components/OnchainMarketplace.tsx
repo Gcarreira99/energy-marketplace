@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import { formatEther } from "viem";
 import {
   useAccount,
@@ -34,9 +34,10 @@ export function OnchainMarketplace() {
   const [priceInput, setPriceInput] = useState("100");
   const [offers, setOffers] = useState<ActiveOffer[]>([]);
   const [offersError, setOffersError] = useState<string | null>(null);
+  const [walletAvailabilityError, setWalletAvailabilityError] = useState<string | null>(null);
   const [pendingCreateStep, setPendingCreateStep] = useState<PendingCreateStep>(null);
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
+  const { connect, connectors, error: connectError, isPending: isConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
 
   function refreshOffers() {
@@ -99,6 +100,19 @@ export function OnchainMarketplace() {
     });
   }
 
+  function connectWallet() {
+    const connector = connectors.find((candidate) => candidate.id === "mock") ?? connectors[0];
+    if (typeof window === "undefined" || !("ethereum" in window)) {
+      if (connector?.id === "mock") {
+        connect({ connector });
+        return;
+      }
+      setWalletAvailabilityError("No browser wallet detected. Install MetaMask or another injected wallet, then reload this page.");
+      return;
+    }
+    if (connector) connect({ connector });
+  }
+
   function submitOffer() {
     const quantity = BigInt(quantityInput || "0");
     const price = BigInt(priceInput || "0");
@@ -122,7 +136,7 @@ export function OnchainMarketplace() {
     const price = BigInt(priceInput || "0");
     if (quantity <= 0n || price <= 0n) return;
 
-    setPendingCreateStep("create");
+    startTransition(() => setPendingCreateStep("create"));
     writeCreate({
       address: marketplaceAddress,
       abi: marketplaceAbi,
@@ -133,8 +147,10 @@ export function OnchainMarketplace() {
 
   useEffect(() => {
     if (pendingCreateStep !== "create" || !createSuccess || !createHash) return;
-    setPendingCreateStep(null);
-    setOrderId("1");
+    startTransition(() => {
+      setPendingCreateStep(null);
+      setOrderId("1");
+    });
     refreshOffers();
     void refetch();
   }, [createHash, createSuccess, pendingCreateStep, refetch]);
@@ -145,15 +161,12 @@ export function OnchainMarketplace() {
     void refetch();
   }, [buySuccess, refetch]);
 
-  useEffect(() => {
-    if (buyError || approvalError || createError) {
-      setPendingCreateStep(null);
-    }
-  }, [approvalError, buyError, createError]);
+  const hasTransactionError = Boolean(buyError || approvalError || createError);
+  const activePendingCreateStep = hasTransactionError ? null : pendingCreateStep;
 
-  const actionStatus = pendingCreateStep === "approve"
+  const actionStatus = activePendingCreateStep === "approve"
     ? "Approving token for marketplace escrow..."
-    : pendingCreateStep === "create"
+    : activePendingCreateStep === "create"
       ? "Submitting sell order..."
       : isBuyPending
         ? "Waiting for buy confirmation..."
@@ -170,7 +183,7 @@ export function OnchainMarketplace() {
                   : null;
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/30">
+    <section id="onchain-marketplace" className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/30">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-300">On-chain desk</p>
@@ -184,8 +197,8 @@ export function OnchainMarketplace() {
             {address?.slice(0, 6)}...{address?.slice(-4)}
           </button>
         ) : (
-          <button onClick={() => connect({ connector: connectors[0] })} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-200">
-            Connect wallet
+          <button onClick={connectWallet} disabled={isConnectPending} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60">
+            {isConnectPending ? "Connecting..." : "Connect wallet"}
           </button>
         )}
       </div>
@@ -228,13 +241,13 @@ export function OnchainMarketplace() {
           </label>
         </div>
         <button
-          disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming || pendingCreateStep !== null}
+          disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming || activePendingCreateStep !== null}
           onClick={submitOffer}
           className="mt-4 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {pendingCreateStep === "approve"
+          {activePendingCreateStep === "approve"
             ? "Approving token..."
-            : pendingCreateStep === "create"
+            : activePendingCreateStep === "create"
               ? "Listing offer..."
               : isApprovalPending || isCreatePending
                 ? "Awaiting wallet..."
@@ -258,6 +271,7 @@ export function OnchainMarketplace() {
       </div>
 
       {actionStatus && <p className="mt-4 text-sm text-cyan-300">{actionStatus}</p>}
+      {(walletAvailabilityError || connectError) && <p className="mt-2 text-sm text-rose-300">{walletAvailabilityError ?? `Wallet connection failed: ${connectError?.message.slice(0, 160)}`}</p>}
       {buyHash && <p className="mt-2 text-sm text-slate-300">Transaction: {buyHash.slice(0, 12)}...</p>}
       {buySuccess && <p className="mt-2 text-sm text-emerald-300">Purchase confirmed. <button onClick={() => refetch()} className="underline">Refresh order</button></p>}
       {approvalHash && <p className="mt-2 text-sm text-slate-300">Approval tx: {approvalHash.slice(0, 12)}...</p>}
