@@ -50,6 +50,30 @@ async function isRpcAvailable() {
   }
 }
 
+async function isDeploymentAvailable() {
+  if (!existsSync(addressesFile)) return false;
+
+  try {
+    const addresses = JSON.parse(readFileSync(addressesFile, "utf8"));
+    const contractAddresses = [
+      addresses["EnergyMarketplaceModule#EnergyToken"],
+      addresses["EnergyMarketplaceModule#Marketplace"],
+    ];
+    for (const address of contractAddresses) {
+      const response = await fetch("http://127.0.0.1:8545", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getCode", params: [address, "latest"] }),
+      });
+      const result = await response.json();
+      if (!result.result || result.result === "0x") return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForRpc() {
   for (let attempt = 0; attempt < 30; attempt += 1) {
     if (await isRpcAvailable()) return;
@@ -67,29 +91,35 @@ async function isHttpAvailable(url) {
   }
 }
 
-function getPortOwners(port) {
+function getProjectPids() {
   try {
-    const output = execSync(`lsof -t -i tcp:${port} || true`, { encoding: "utf8" });
+    const output = execSync("ps -eo pid=,args=", { encoding: "utf8" });
     return output
       .split(/\n/)
-      .map((line) => Number.parseInt(line.trim(), 10))
-      .filter((pid) => Number.isFinite(pid) && pid !== process.pid);
+      .flatMap((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return [];
+        const [pidString, ...rest] = trimmed.split(/\s+/);
+        const command = rest.join(" ");
+        const projectPrefix = "/home/gonzi/personal/energy-marketplace";
+        const matchesProjectProcess = [
+          `${projectPrefix}/smart-contracts/node_modules/.bin/hardhat node`,
+          `${projectPrefix}/backend/node_modules/.bin/nest start --watch`,
+          `${projectPrefix}/frontend/node_modules/.bin/next dev`,
+          "node scripts/dev.mjs",
+        ].some((pattern) => command.includes(pattern));
+        if (!matchesProjectProcess) return [];
+        const pid = Number.parseInt(pidString, 10);
+        if (!Number.isFinite(pid) || pid === process.pid) return [];
+        return [pid];
+      });
   } catch {
     return [];
   }
 }
 
 function stopProjectProcesses() {
-  const ports = [8545, 3001, 3000];
-  const pidSet = new Set();
-
-  for (const port of ports) {
-    for (const pid of getPortOwners(port)) {
-      pidSet.add(pid);
-    }
-  }
-
-  for (const pid of pidSet) {
+  for (const pid of getProjectPids()) {
     try {
       process.kill(pid, "SIGTERM");
     } catch {
@@ -133,48 +163,61 @@ process.on("SIGINT", () => void stopAll());
 process.on("SIGTERM", () => void stopAll());
 
 try {
+  let backendStarted = false;
+  let frontendStarted = false;
+
   if (!existsSync(join(contractsDir, "node_modules")) || !existsSync(join(backendDir, "node_modules")) || !existsSync(join(frontendDir, "node_modules"))) {
     throw new Error("Dependencies are missing. Run npm install in smart-contracts, backend, and frontend first.");
   }
 
-  const staleProcesses = new Set();
-  for (const port of [8545, 3001, 3000]) {
-    for (const pid of getPortOwners(port)) {
-      staleProcesses.add(pid);
-    }
-  }
-  if (staleProcesses.size > 0) {
+  const staleProcesses = getProjectPids();
+  if (staleProcesses.length > 0) {
     console.log("Stopping stale local project processes before startup...");
     stopProjectProcesses();
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 800));
+    for (const pid of getProjectPids()) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+      }
+    }
   }
 
-  if (await isRpcAvailable()) {
+  const rpcAvailable = await isRpcAvailable();
+  const deploymentAvailable = rpcAvailable && await isDeploymentAvailable();
+  if (deploymentAvailable) {
     console.log("Local blockchain already running on http://127.0.0.1:8545. Skipping fresh startup.");
   } else {
+    let nodeOutput = "";
     rmSync(deploymentDir, { recursive: true, force: true });
     rmSync(databaseFile, { force: true });
-    console.log("Starting local blockchain...");
-    const node = commandFor("npx", ["hardhat", "node"], contractsDir);
-    let nodeOutput = "";
-    node.stdout.on("data", (data) => {
-      nodeOutput += data.toString();
-    });
-    await waitForRpc();
+    if (!rpcAvailable) {
+      console.log("Starting local blockchain...");
+      const node = commandFor("npx", ["hardhat", "node"], contractsDir);
+      node.stdout.on("data", (data) => {
+        nodeOutput += data.toString();
+      });
+      await waitForRpc();
+    } else {
+      console.log("Local blockchain is running without current contract deployments. Redeploying...");
+    }
 
     console.log("Deploying contracts...");
     await run("npx", ["hardhat", "ignition", "deploy", "--network", "localhost", "ignition/modules/EnergyMarketplace.ts", "--reset"], contractsDir);
-    const privateKey = nodeOutput.match(/Private Key:\s*(0x[0-9a-fA-F]+)/)?.[1];
+    const privateKey = nodeOutput.match(/Private Key:\s*(0x[0-9a-fA-F]+)/)?.[1]
+      ?? readFileSync(join(backendDir, ".env"), "utf8").match(/BACKEND_PRIVATE_KEY=(.+)/)?.[1];
     if (!privateKey) throw new Error("Could not read a funded private key from Hardhat.");
     const { marketplaceAddress, backendEnv } = writeConfiguration(privateKey);
     console.log(`Contracts ready. Marketplace: ${marketplaceAddress}`);
     console.log("Starting backend and frontend. Press Ctrl+C to stop everything.\n");
     commandFor("npm", ["run", "start:dev"], backendDir, backendEnv);
     commandFor("npm", ["run", "dev"], frontendDir);
+    backendStarted = true;
+    frontendStarted = true;
   }
 
   const backendAlreadyRunning = await isHttpAvailable("http://127.0.0.1:3001/v1/marketplace/offers");
-  if (backendAlreadyRunning) {
+  if (backendAlreadyRunning || backendStarted) {
     console.log("Backend already running on http://127.0.0.1:3001. Skipping backend startup.");
   } else {
     const privateKey = readFileSync(join(backendDir, ".env"), "utf8").match(/BACKEND_PRIVATE_KEY=(.+)/)?.[1];
@@ -196,7 +239,7 @@ try {
   }
 
   const frontendAlreadyRunning = await isHttpAvailable("http://127.0.0.1:3000");
-  if (!frontendAlreadyRunning) {
+  if (!frontendAlreadyRunning && !frontendStarted) {
     commandFor("npm", ["run", "dev"], frontendDir);
   } else {
     console.log("Frontend already running on http://127.0.0.1:3000. Skipping frontend startup.");
