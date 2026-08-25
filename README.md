@@ -1,81 +1,49 @@
-# Decentralized Energy Marketplace ⚡
+# Decentralized Energy Marketplace
 
-A decentralized peer-to-peer energy trading platform built using blockchain technology. The system simulates a microgrid where users can buy and sell energy units transparently using smart contracts.
+A local-first peer-to-peer energy trading application. Energy is represented by
+an ERC-20 token, while the marketplace uses full-fill escrow and native ETH for
+settlement.
 
----
+## Current Implementation
 
-## 🌍 Project Vision
+The project currently includes a working end-to-end local marketplace slice:
 
-The goal of this project is to simulate a decentralized energy economy where users (households) can:
-- Generate energy (simulated solar production)
-- Store surplus energy
-- Trade energy directly with other users
-- Participate in a transparent energy marketplace
+- `EnergyToken.sol`: owner-controlled ERC-20 token with whole-kWh units. One
+	token represents one kWh; minting and burning are owner-only.
+- `Marketplace.sol`: creates sell orders, escrows energy, accepts exact-ETH
+	purchases, and supports seller cancellation with escrow refunds.
+- NestJS backend: indexes `SellOrderCreated`, `EnergyPurchased`, and
+	`SellOrderCancelled` events into SQLite and exposes active offers through
+	`GET /v1/marketplace/offers`.
+- Next.js frontend: connects a wallet, reads orders, creates offers through
+	`approve` followed by `createSellOrder`, buys active orders, and displays
+	transaction progress and errors.
+- Local development bootstrap: starts Hardhat, deploys the contracts, seeds the
+	local wallet with test ETH and energy, generates ignored environment files,
+	and starts the backend and frontend.
 
-This project demonstrates concepts from:
-- Blockchain systems
-- Smart contracts
-- Distributed marketplaces
-- Real-time data systems
-- (Future extension) AI-driven energy optimization
+The validated local lifecycle is:
 
----
+```text
+connect wallet -> approve ENRG -> create offer -> index active offer
+-> buy energy -> index offer as inactive
+```
 
-## 🛠️ Tech Stack
+## Home Page Screenshot
 
-### Smart Contracts
-- Solidity
-- Hardhat (TypeScript setup)
-- Mocha (Testing framework)
-- Ethers.js (Blockchain interaction)
+![Energy Marketplace home page main info](docs/images/HomePage_EM.png)
 
-### Frontend (planned / optional integration)
-- Next.js
-- TypeScript
-- Ethers.js / Viem
+![Energy Marketplace home page with placeholder info](docs/images/HomePage_EM_2.png)
 
-### Backend (planned)
-- Node.js (TypeScript)
-- FastAPI or NestJS (future choice)
-- Redis (real-time updates)
+## Technology
 
----
-
-## 📦 Smart Contract Architecture
-
-### 1. EnergyToken Contract
-Represents energy as a tokenized asset.
-
-- 1 token = 1 kWh of energy
-- Users can transfer energy between wallets
-- Used as the base unit of trade
-
----
-
-### 2. Marketplace Contract
-Handles peer-to-peer energy trading.
-
-Features:
-- Create sell orders
-- Buy energy from other users
-- Cancel orders
-- Escrow-based secure transactions
-
----
-
-### 3. (Future) Grid Governance Contract
-DAO-style governance system for:
-- Pricing rules
-- Grid policies
-- Network parameters
-
-
-### Posterior Features
-Addition of AI features to improve overall the system.
+- Smart contracts: Solidity 0.8.28, Hardhat 3, OpenZeppelin, Ethers.js
+- Backend: NestJS, TypeORM, SQLite, Ethers.js
+- Frontend: Next.js, TypeScript, Wagmi, Viem, Tailwind CSS, Recharts
 
 ## Run Locally
 
-Install the dependencies once:
+Install dependencies once:
 
 ```shell
 npm install --prefix smart-contracts
@@ -83,17 +51,23 @@ npm install --prefix backend
 npm install --prefix frontend
 ```
 
-Then start the complete local application from the repository root:
+Copy the root environment template and fill in local values when needed:
+
+```shell
+cp .env.example .env
+```
+
+Then start the complete stack from the repository root:
 
 ```shell
 npm run dev
 ```
 
-The command starts a fresh local blockchain, deploys the contracts, generates
-the ignored local environment files, and starts the backend and frontend.
-Open <http://localhost:3000> when the startup logs show both services running.
+The bootstrap starts or reuses the local Hardhat RPC, deploys contracts when
+the deployment is missing or stale, seeds the configured local wallet, and
+starts the backend and frontend. Open <http://localhost:3000> after startup.
 
-Use a browser wallet connected to:
+The default local network is:
 
 ```text
 Network: Localhost
@@ -102,6 +76,56 @@ Chain ID: 31337
 Currency: ETH
 ```
 
-Import one of the funded accounts printed by the local blockchain startup.
-Press `Ctrl+C` to stop all services. Each new run resets the local chain and
-SQLite database, so existing local offers are not preserved.
+By default, local frontend development uses Wagmi's mock connector, so a
+browser wallet extension is not required. The configured local wallet address
+is stored in the ignored root `.env` file. The seed script gives it test ETH
+for gas and 100 ENRG for offer creation.
+
+Press `Ctrl+C` to stop the stack. A fresh local chain resets contract state and
+the SQLite database, so local offers are not persistent between resets.
+
+## Useful Commands
+
+Run the contract tests:
+
+```shell
+cd smart-contracts
+npx hardhat test test/EnergyToken.ts test/Marketplace.ts
+```
+
+Build and lint the frontend:
+
+```shell
+cd frontend
+npm run lint
+npm run build
+```
+
+Build the backend:
+
+```shell
+cd backend
+npm run build
+```
+
+## Current Limitations
+
+- Orders are full-fill only; partial fills, edits, expiry, fees, and stablecoin
+	payments are not implemented.
+- The backend settlement endpoint uses a configured backend signer as an
+	operator buyer. It is a demo flow, not wallet-authenticated production
+	settlement.
+- Offers are event-indexed in SQLite and the frontend currently refreshes its
+	offer list through the API rather than using a realtime transport.
+- Local development accounts and private keys are test-only and must never be
+	used on a live network.
+
+Planned follow-up work is indexer restart/reorg handling, settlement API
+hardening and persistence, richer frontend live-state updates, seller
+cancellation UI, and broader integration coverage.
+
+## Future Scope
+
+Energy production simulation, grid governance, role-based token authority,
+multisig ownership, emergency recovery, and AI-driven optimization remain
+future extensions.
