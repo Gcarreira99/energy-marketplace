@@ -37,17 +37,22 @@ function run(command, args, cwd) {
   });
 }
 
+async function isRpcAvailable() {
+  try {
+    const response = await fetch("http://127.0.0.1:8545", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function waitForRpc() {
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    try {
-      const response = await fetch("http://127.0.0.1:8545", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
-      });
-      if (response.ok) return;
-    } catch {
-    }
+    if (await isRpcAvailable()) return;
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
   }
   throw new Error("Hardhat node did not become ready on http://127.0.0.1:8545");
@@ -91,6 +96,11 @@ process.on("SIGTERM", () => void stopAll());
 try {
   if (!existsSync(join(contractsDir, "node_modules")) || !existsSync(join(backendDir, "node_modules")) || !existsSync(join(frontendDir, "node_modules"))) {
     throw new Error("Dependencies are missing. Run npm install in smart-contracts, backend, and frontend first.");
+  }
+
+  if (await isRpcAvailable()) {
+    console.log("Local blockchain already running on http://127.0.0.1:8545. Skipping fresh startup.");
+    process.exit(0);
   }
 
   rmSync(deploymentDir, { recursive: true, force: true });
