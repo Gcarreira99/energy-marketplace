@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
+import { getProjectPids, stopProjectProcesses } from "./lib/project-processes.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const rootEnvFile = join(root, ".env");
@@ -125,42 +126,6 @@ async function isHttpAvailable(url) {
   }
 }
 
-function getProjectPids() {
-  try {
-    const output = execSync("ps -eo pid=,args=", { encoding: "utf8" });
-    return output
-      .split(/\n/)
-      .flatMap((line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return [];
-        const [pidString, ...rest] = trimmed.split(/\s+/);
-        const command = rest.join(" ");
-        const projectPrefix = "/home/gonzi/personal/energy-marketplace";
-        const matchesProjectProcess = [
-          `${projectPrefix}/smart-contracts/node_modules/.bin/hardhat node`,
-          `${projectPrefix}/backend/node_modules/.bin/nest start --watch`,
-          `${projectPrefix}/frontend/node_modules/.bin/next dev`,
-          `node ${join(root, "scripts/dev.mjs")}`,
-        ].some((pattern) => command.includes(pattern));
-        if (!matchesProjectProcess) return [];
-        const pid = Number.parseInt(pidString, 10);
-        if (!Number.isFinite(pid) || pid === process.pid) return [];
-        return [pid];
-      });
-  } catch {
-    return [];
-  }
-}
-
-function stopProjectProcesses() {
-  for (const pid of getProjectPids()) {
-    try {
-      process.kill(pid, "SIGTERM");
-    } catch {
-    }
-  }
-}
-
 function writeConfiguration(privateKey) {
   const addresses = JSON.parse(readFileSync(addressesFile, "utf8"));
   const marketplaceAddress = addresses["EnergyMarketplaceModule#Marketplace"];
@@ -204,24 +169,23 @@ try {
     throw new Error("Dependencies are missing. Run npm install in smart-contracts, backend, and frontend first.");
   }
 
-  const staleProcesses = getProjectPids();
-  if (staleProcesses.length > 0) {
-    console.log("Stopping stale local project processes before startup...");
-    stopProjectProcesses();
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 800));
-    for (const pid of getProjectPids()) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {
-      }
-    }
-  }
-
-  const rpcAvailable = await isRpcAvailable();
-  const deploymentAvailable = rpcAvailable && await isDeploymentAvailable();
+  const rpcAvailableBeforeCleanup = await isRpcAvailable();
+  const deploymentAvailable = rpcAvailableBeforeCleanup && await isDeploymentAvailable();
   if (deploymentAvailable) {
     console.log(`Local blockchain already running on ${rpcUrl}. Skipping fresh startup.`);
+    console.log("Topping up local wallet ETH/ENRG if needed...");
+    await run("npx", ["hardhat", "run", "scripts/seed-local.ts", "--network", "localhost"], contractsDir, {
+      RPC_URL: rpcUrl,
+      LOCAL_WALLET_ADDRESS: localWalletAddress,
+      OWNER_PRIVATE_KEY: ownerPrivateKey,
+    });
   } else {
+    if (getProjectPids().length > 0) {
+      console.log("Stopping stale local project processes before startup...");
+      await stopProjectProcesses();
+    }
+
+    const rpcAvailable = await isRpcAvailable();
     let nodeOutput = "";
     rmSync(deploymentDir, { recursive: true, force: true });
     rmSync(databaseFile, { force: true });

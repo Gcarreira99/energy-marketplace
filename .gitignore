@@ -17,3 +17,4 @@ venv/
 .hardhat-waffle
 smart-contracts/ignition/deployments/
 package-lock.json
+logs/*

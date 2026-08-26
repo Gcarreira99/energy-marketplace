@@ -80,8 +80,11 @@ browser wallet extension is not required. The configured local wallet address
 is stored in the ignored root `.env` file. The seed script gives it test ETH
 for gas and 100 ENRG for offer creation.
 
-Press `Ctrl+C` to stop the stack. A fresh local chain resets contract state and
-the SQLite database, so local offers are not persistent between resets.
+Press `Ctrl+C` to stop the stack. If a local Hardhat node is still healthy and
+already deployed with a funded wallet, the next `npm run dev` reuses it instead
+of redeploying, so local offers persist across restarts of the backend and
+frontend. If anything is left running in the background (for example after a
+crash), run `npm run dev:stop` to stop all local stack processes.
 
 ## Useful Commands
 
