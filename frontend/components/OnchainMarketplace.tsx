@@ -1,9 +1,10 @@
 "use client";
 
 import { startTransition, useEffect, useState } from "react";
-import { formatEther } from "viem";
+import { decodeEventLog, formatEther } from "viem";
 import {
   useAccount,
+  useBalance,
   useConnect,
   useDisconnect,
   useReadContract,
@@ -16,6 +17,8 @@ import {
   marketplaceAbi,
   marketplaceAddress,
 } from "@/lib/contracts";
+import { hasSufficientBalance } from "@/lib/balances";
+import { toFriendlyErrorMessage } from "@/lib/errors";
 
 type ActiveOffer = {
   orderId: string;
@@ -73,9 +76,22 @@ export function OnchainMarketplace() {
   } = useWriteContract();
   const { isLoading: isBuyConfirming, isSuccess: buySuccess } = useWaitForTransactionReceipt({ hash: buyHash });
   const { isLoading: isApprovalConfirming, isSuccess: approvalSuccess } = useWaitForTransactionReceipt({ hash: approvalHash });
-  const { isLoading: isCreateConfirming, isSuccess: createSuccess } = useWaitForTransactionReceipt({ hash: createHash });
+  const { data: createReceipt, isLoading: isCreateConfirming, isSuccess: createSuccess } = useWaitForTransactionReceipt({ hash: createHash });
   const numericOrderId = BigInt(orderId || "0");
   const contractConfigured = Boolean(process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS);
+  const quantity = BigInt(quantityInput || "0");
+
+  const { data: enrgBalance } = useReadContract({
+    address: energyTokenAddress,
+    abi: energyTokenAbi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: contractConfigured && Boolean(address) },
+  });
+  const { data: ethBalance } = useBalance({
+    address,
+    query: { enabled: Boolean(address) },
+  });
 
   useEffect(() => {
     refreshOffers();
@@ -114,9 +130,8 @@ export function OnchainMarketplace() {
   }
 
   function submitOffer() {
-    const quantity = BigInt(quantityInput || "0");
     const price = BigInt(priceInput || "0");
-    if (!isConnected || !contractConfigured || quantity <= 0n || price <= 0n) {
+    if (!isConnected || !contractConfigured || quantity <= 0n || price <= 0n || !hasSufficientBalance(quantity, enrgBalance)) {
       return;
     }
 
@@ -132,7 +147,6 @@ export function OnchainMarketplace() {
   useEffect(() => {
     if (pendingCreateStep !== "approve" || !approvalSuccess || !approvalHash) return;
 
-    const quantity = BigInt(quantityInput || "0");
     const price = BigInt(priceInput || "0");
     if (quantity <= 0n || price <= 0n) return;
 
@@ -143,17 +157,29 @@ export function OnchainMarketplace() {
       functionName: "createSellOrder",
       args: [quantity, price],
     });
-  }, [approvalHash, approvalSuccess, pendingCreateStep, priceInput, quantityInput, writeCreate]);
+  }, [approvalHash, approvalSuccess, pendingCreateStep, priceInput, quantity, writeCreate]);
 
   useEffect(() => {
-    if (pendingCreateStep !== "create" || !createSuccess || !createHash) return;
+    if (pendingCreateStep !== "create" || !createSuccess || !createReceipt) return;
+
+    const createdOrderId = createReceipt.logs
+      .map((log) => {
+        try {
+          return decodeEventLog({ abi: marketplaceAbi, data: log.data, topics: log.topics });
+        } catch {
+          return null;
+        }
+      })
+      .find((decoded) => decoded?.eventName === "SellOrderCreated")
+      ?.args as { orderId?: bigint } | undefined;
+
     startTransition(() => {
       setPendingCreateStep(null);
-      setOrderId("1");
+      if (createdOrderId?.orderId !== undefined) setOrderId(createdOrderId.orderId.toString());
     });
     refreshOffers();
     void refetch();
-  }, [createHash, createSuccess, pendingCreateStep, refetch]);
+  }, [createReceipt, createSuccess, pendingCreateStep, refetch]);
 
   useEffect(() => {
     if (!buySuccess) return;
@@ -163,6 +189,9 @@ export function OnchainMarketplace() {
 
   const hasTransactionError = Boolean(buyError || approvalError || createError);
   const activePendingCreateStep = hasTransactionError ? null : pendingCreateStep;
+
+  const canAffordBuy = !order?.active || hasSufficientBalance(order.price, ethBalance?.value);
+  const canAffordCreate = quantity <= 0n || hasSufficientBalance(quantity, enrgBalance);
 
   const actionStatus = activePendingCreateStep === "approve"
     ? "Approving token for marketplace escrow..."
@@ -223,10 +252,13 @@ export function OnchainMarketplace() {
             </div>
           ) : "No order found"}
         </div>
-        <button disabled={!isConnected || !order?.active || isBuyPending || isBuyConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
+        <button disabled={!isConnected || !order?.active || !canAffordBuy || isBuyPending || isBuyConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
           {isBuyPending ? "Confirm in wallet..." : isBuyConfirming ? "Confirming..." : "Buy energy"}
         </button>
       </div>
+      {isConnected && order?.active && !canAffordBuy && (
+        <p className="mt-2 text-sm text-rose-300">Insufficient ETH balance to buy this order.</p>
+      )}
 
       <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
         <p className="text-sm font-medium text-slate-300">Create a sell offer</p>
@@ -241,7 +273,7 @@ export function OnchainMarketplace() {
           </label>
         </div>
         <button
-          disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming || activePendingCreateStep !== null}
+          disabled={!isConnected || !contractConfigured || !canAffordCreate || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming || activePendingCreateStep !== null}
           onClick={submitOffer}
           className="mt-4 rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -253,6 +285,9 @@ export function OnchainMarketplace() {
                 ? "Awaiting wallet..."
                 : "Create offer"}
         </button>
+        {isConnected && !canAffordCreate && (
+          <p className="mt-2 text-sm text-rose-300">Insufficient ENRG balance to create this offer.</p>
+        )}
       </div>
 
       <div className="mt-6 border-t border-slate-800 pt-5">
@@ -271,13 +306,13 @@ export function OnchainMarketplace() {
       </div>
 
       {actionStatus && <p className="mt-4 text-sm text-cyan-300">{actionStatus}</p>}
-      {(walletAvailabilityError || connectError) && <p className="mt-2 text-sm text-rose-300">{walletAvailabilityError ?? `Wallet connection failed: ${connectError?.message.slice(0, 160)}`}</p>}
+      {(walletAvailabilityError || connectError) && <p className="mt-2 text-sm text-rose-300">{walletAvailabilityError ?? `Wallet connection failed: ${toFriendlyErrorMessage(connectError)}`}</p>}
       {buyHash && <p className="mt-2 text-sm text-slate-300">Transaction: {buyHash.slice(0, 12)}...</p>}
       {buySuccess && <p className="mt-2 text-sm text-emerald-300">Purchase confirmed. <button onClick={() => refetch()} className="underline">Refresh order</button></p>}
       {approvalHash && <p className="mt-2 text-sm text-slate-300">Approval tx: {approvalHash.slice(0, 12)}...</p>}
       {createHash && <p className="mt-2 text-sm text-slate-300">Offer tx: {createHash.slice(0, 12)}...</p>}
       {createSuccess && <p className="mt-2 text-sm text-emerald-300">Offer created successfully.</p>}
-      {(buyError || approvalError || createError) && <p className="mt-2 text-sm text-rose-300">{(buyError ?? approvalError ?? createError)?.message.slice(0, 160)}</p>}
+      {(buyError || approvalError || createError) && <p className="mt-2 text-sm text-rose-300">{toFriendlyErrorMessage(buyError ?? approvalError ?? createError)}</p>}
     </section>
   );
 }

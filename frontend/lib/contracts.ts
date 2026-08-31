@@ -14,6 +14,13 @@ export const energyTokenAbi = [
     ],
     outputs: [{ name: "approved", type: "bool" }],
   },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "balance", type: "uint256" }],
+  },
 ] as const;
 
 export const marketplaceAbi = [
@@ -50,5 +57,16 @@ export const marketplaceAbi = [
       { name: "price", type: "uint256" },
     ],
     outputs: [{ name: "orderId", type: "uint256" }],
+  },
+  {
+    type: "event",
+    name: "SellOrderCreated",
+    inputs: [
+      { name: "orderId", type: "uint256", indexed: true },
+      { name: "seller", type: "address", indexed: true },
+      { name: "quantity", type: "uint256", indexed: false },
+      { name: "price", type: "uint256", indexed: false },
+      { name: "timestamp", type: "uint256", indexed: false },
+    ],
   },
 ] as const;
