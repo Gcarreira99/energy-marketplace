@@ -1,0 +1,40 @@
+# Dependabot runs on GitHub's infrastructure for free. It opens PRs when a
+# dependency has a newer version and flags known vulnerabilities in the
+# repo's Security tab. Nothing runs on your machine.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /backend
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /smart-contracts
+    schedule: { interval: weekly, day: monday, time: "06:00" }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday, time: "06:00" }
