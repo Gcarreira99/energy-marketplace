@@ -45,7 +45,7 @@ Runs on GitHub-hosted runners (free: unlimited for public repos, 2,000 min/month
 - **Dependabot alerts** — on. Flags CVEs in your tree in the Security tab.
 - **Dependabot security updates** — on. Auto-PRs the fix for an alert.
 - **Secret scanning** + **Push protection** — on. Free for public repos; blocks a push that contains a recognised token.
-- `.github/dependabot.yml` (in this change) — weekly grouped version-bump PRs for all four npm dirs and the workflow actions.
+- `.github/dependabot.yml` (in this change) — weekly, fully grouped: **one** PR for all npm version bumps across every workspace (majors included), one for npm security fixes, one for GitHub Actions.
 
 ## Current backlog (first run, 2026-08-31)
 
