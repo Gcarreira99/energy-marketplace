@@ -1,40 +1,38 @@
 # Dependabot runs on GitHub's infrastructure for free. It opens PRs when a
 # dependency has a newer version and flags known vulnerabilities in the
 # repo's Security tab. Nothing runs on your machine.
+#
+# Everything is grouped: one PR for all npm version bumps across every
+# workspace, one for npm security fixes, one for GitHub Actions. `patterns:
+# ["*"]` and the missing `update-types` filter mean major bumps are included
+# in the group instead of getting their own PR.
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /
-    schedule: { interval: weekly, day: monday, time: "06:00" }
-    open-pull-requests-limit: 5
+    directories:
+      - "/"
+      - "/backend"
+      - "/frontend"
+      - "/smart-contracts"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 10
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-
-  - package-ecosystem: npm
-    directory: /backend
-    schedule: { interval: weekly, day: monday, time: "06:00" }
-    open-pull-requests-limit: 5
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-
-  - package-ecosystem: npm
-    directory: /frontend
-    schedule: { interval: weekly, day: monday, time: "06:00" }
-    open-pull-requests-limit: 5
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
-
-  - package-ecosystem: npm
-    directory: /smart-contracts
-    schedule: { interval: weekly, day: monday, time: "06:00" }
-    open-pull-requests-limit: 5
-    groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      npm-version-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      npm-security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
-    directory: /
-    schedule: { interval: weekly, day: monday, time: "06:00" }
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    groups:
+      actions:
+        patterns: ["*"]
