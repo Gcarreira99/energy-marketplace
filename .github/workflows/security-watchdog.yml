@@ -1,0 +1,187 @@
+name: security-watchdog
+
+# Runs on GitHub's free hosted runners — nothing on your machine.
+#   - weekly on a schedule (full report + tracking issue)
+#   - on every PR / push to main that touches dependencies (gate on CRITICAL)
+#   - manually from the Actions tab (workflow_dispatch)
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "**/package.json"
+      - "**/package-lock.json"
+      - ".github/workflows/security-watchdog.yml"
+      - "scripts/audit-guard.mjs"
+  push:
+    branches: [main]
+    paths:
+      - "**/package.json"
+      - "**/package-lock.json"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: security-watchdog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the secret sweep
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install workspace dependencies
+        run: |
+          for ws in backend frontend smart-contracts; do
+            echo "::group::npm ci ($ws)"
+            (cd "$ws" && npm ci --no-audit --no-fund --ignore-scripts) || \
+            (cd "$ws" && npm install --no-audit --no-fund --ignore-scripts)
+            echo "::endgroup::"
+          done
+          npm install --no-audit --no-fund --ignore-scripts || true
+
+      # ---- dependency vulns + tracked-file secret sweep + git history ----
+      - name: Run audit-guard
+        id: guard
+        run: |
+          set -o pipefail
+          # Gate the PR/push on CRITICAL only so the existing backlog does not
+          # block every change. The weekly run still reports everything.
+          GATE=critical
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            GATE=critical
+            EXTRA="--history --outdated"
+          fi
+          node scripts/audit-guard.mjs --fail-on "$GATE" $EXTRA | tee audit-report.txt
+        continue-on-error: true
+
+      # ---- gitleaks: dedicated secret scanner over the whole git history ----
+      - name: Install gitleaks
+        run: |
+          VERSION="$(curl -sSL https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+            | grep -oP '"tag_name":\s*"v\K[^"]+')"
+          echo "gitleaks $VERSION"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Run gitleaks
+        id: gitleaks
+        run: |
+          gitleaks detect --redact --no-banner --exit-code 1 \
+            --report-format sarif --report-path gitleaks.sarif \
+            | tee gitleaks-report.txt
+        continue-on-error: true
+
+      # ---- assemble the run summary ----
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "## 🔒 security-watchdog — $(date -u +%FT%TZ)"
+            echo ""
+            echo "| check | result |"
+            echo "|---|---|"
+            echo "| audit-guard | ${{ steps.guard.outcome }} |"
+            echo "| gitleaks | ${{ steps.gitleaks.outcome }} |"
+            echo ""
+            echo "<details><summary>audit-guard output</summary>"
+            echo ""
+            echo '```'
+            cat audit-report.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+            echo "</details>"
+            echo ""
+            echo "<details><summary>gitleaks output</summary>"
+            echo ""
+            echo '```'
+            cat gitleaks-report.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---- weekly run: open / refresh a tracking issue when something fails ----
+      - name: Open tracking issue
+        if: always() && github.event_name == 'schedule' && (steps.guard.outcome == 'failure' || steps.gitleaks.outcome == 'failure')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return '(no output)'; } };
+            const body = [
+              `security-watchdog found issues on \`${context.ref}\`.`,
+              ``,
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              ``,
+              `### audit-guard (${{ toJSON(steps.guard.outcome) }})`,
+              '```', read('audit-report.txt').slice(0, 55000), '```',
+              ``,
+              `### gitleaks (${{ toJSON(steps.gitleaks.outcome) }})`,
+              '```', read('gitleaks-report.txt').slice(0, 5000), '```',
+            ].join('\n');
+            const title = '🔒 security-watchdog findings';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'security-watchdog',
+            });
+            if (existing.data.length) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.data[0].number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['security-watchdog'],
+              });
+            }
+
+      - name: Fail if any check failed
+        if: steps.guard.outcome == 'failure' || steps.gitleaks.outcome == 'failure'
+        run: |
+          echo "One or more security checks reported findings — see the job summary."
+          exit 1
+
+  # Solidity static analysis. Non-blocking: reports into the summary only.
+  contracts:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install smart-contract deps
+        run: cd smart-contracts && (npm ci --ignore-scripts || npm install --ignore-scripts)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Slither
+        run: |
+          pipx install slither-analyzer
+          cd smart-contracts
+          slither . --json slither.json 2>&1 | tee ../slither-report.txt || true
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Slither (smart-contracts)"
+            echo '```'
+            tail -c 30000 slither-report.txt 2>/dev/null || echo "(no output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
