@@ -18,3 +18,5 @@ venv/
 smart-contracts/ignition/deployments/
 package-lock.json
 logs/*
+
+docs/wsl-*

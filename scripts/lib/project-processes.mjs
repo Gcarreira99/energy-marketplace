@@ -16,8 +16,15 @@ export function getProjectPids() {
         const matchesProjectProcess = [
           `${root}/smart-contracts/node_modules/.bin/hardhat node`,
           `${root}/backend/node_modules/.bin/nest start --watch`,
+          // `nest start --watch` forks the compiled server as its own child process once a
+          // build completes; killing only the watcher above leaves this one running and
+          // still bound to the backend port.
+          `${join(root, "backend", "dist", "main")}`,
           `${root}/frontend/node_modules/.bin/next dev`,
-          `node ${join(root, "scripts/dev.mjs")}`,
+          // Matched without the root prefix: `npm run dev` invokes this as the literal
+          // relative string "node scripts/dev.mjs" (npm does not resolve it to an
+          // absolute path), so an absolute-path match here never fires.
+          "scripts/dev.mjs",
         ].some((pattern) => command.includes(pattern));
         if (!matchesProjectProcess) return [];
         const pid = Number.parseInt(pidString, 10);
