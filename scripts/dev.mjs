@@ -155,6 +155,8 @@ async function stopAll(exitCode = 0) {
   for (const child of children) child.kill("SIGTERM");
   await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
   for (const child of children) child.kill("SIGKILL");
+  // nest start --watch runs the app as a separate process that outlives its parent.
+  await stopProjectProcesses((command) => command.includes(join(backendDir, "dist/main")));
   process.exit(exitCode);
 }
 
