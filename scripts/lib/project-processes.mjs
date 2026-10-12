@@ -16,6 +16,7 @@ export function getProjectPids() {
         const matchesProjectProcess = [
           `${root}/smart-contracts/node_modules/.bin/hardhat node`,
           `${root}/backend/node_modules/.bin/nest start --watch`,
+          `${root}/backend/dist/main`,
           `${root}/frontend/node_modules/.bin/next dev`,
           `node ${join(root, "scripts/dev.mjs")}`,
         ].some((pattern) => command.includes(pattern));
