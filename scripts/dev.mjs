@@ -219,10 +219,10 @@ try {
     frontendStarted = true;
   }
 
-  const backendAlreadyRunning = await isHttpAvailable(`${backendUrl}/v1/marketplace/offers`);
-  if (backendAlreadyRunning || backendStarted) {
+  const backendAlreadyRunning = !backendStarted && await isHttpAvailable(`${backendUrl}/v1/marketplace/offers`);
+  if (backendAlreadyRunning) {
     console.log(`Backend already running on ${backendUrl}. Skipping backend startup.`);
-  } else {
+  } else if (!backendStarted) {
     const privateKey = readFileSync(join(backendDir, ".env"), "utf8").match(/BACKEND_PRIVATE_KEY=(.+)/)?.[1];
     const marketplaceAddress = readFileSync(join(backendDir, ".env"), "utf8").match(/MARKETPLACE_ADDRESS=(.+)/)?.[1];
     const backendEnv = {
@@ -241,11 +241,11 @@ try {
     commandFor("npm", ["run", "start:dev"], backendDir, backendEnv);
   }
 
-  const frontendAlreadyRunning = await isHttpAvailable(frontendUrl);
-  if (!frontendAlreadyRunning && !frontendStarted) {
-    commandFor("npm", ["run", "dev"], frontendDir, { PORT: frontendPort });
-  } else {
+  const frontendAlreadyRunning = !frontendStarted && await isHttpAvailable(frontendUrl);
+  if (frontendAlreadyRunning) {
     console.log(`Frontend already running on ${frontendUrl}. Skipping frontend startup.`);
+  } else if (!frontendStarted) {
+    commandFor("npm", ["run", "dev"], frontendDir, { PORT: frontendPort });
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
