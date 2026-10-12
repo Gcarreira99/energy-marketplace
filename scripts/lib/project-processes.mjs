@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..", "..");
 
-export function getProjectPids() {
+export function getProjectPids(filter = () => true) {
   try {
     const output = execSync("ps -eo pid=,args=", { encoding: "utf8" });
     return output
@@ -20,7 +20,7 @@ export function getProjectPids() {
           `${root}/frontend/node_modules/.bin/next dev`,
           `node ${join(root, "scripts/dev.mjs")}`,
         ].some((pattern) => command.includes(pattern));
-        if (!matchesProjectProcess) return [];
+        if (!matchesProjectProcess || !filter(command)) return [];
         const pid = Number.parseInt(pidString, 10);
         if (!Number.isFinite(pid) || pid === process.pid) return [];
         return [pid];
@@ -30,8 +30,8 @@ export function getProjectPids() {
   }
 }
 
-export async function stopProjectProcesses() {
-  const pids = getProjectPids();
+export async function stopProjectProcesses(filter = () => true) {
+  const pids = getProjectPids(filter);
   if (pids.length === 0) return false;
   for (const pid of pids) {
     try {
@@ -40,7 +40,7 @@ export async function stopProjectProcesses() {
     }
   }
   await new Promise((resolvePromise) => setTimeout(resolvePromise, 800));
-  for (const pid of getProjectPids()) {
+  for (const pid of getProjectPids(filter)) {
     try {
       process.kill(pid, "SIGKILL");
     } catch {
