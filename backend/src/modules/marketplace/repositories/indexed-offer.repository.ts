@@ -17,6 +17,10 @@ export class IndexedOfferRepository {
     });
   }
 
+  findById(orderId: bigint) {
+    return this.repository.findOneBy({ orderId: orderId.toString() });
+  }
+
   async upsertCreated(offer: Omit<IndexedOffer, "updatedAt">) {
     await this.repository.upsert(
       { ...offer, updatedAt: new Date() },

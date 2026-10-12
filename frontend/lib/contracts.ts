@@ -6,6 +6,13 @@ export const energyTokenAddress = (process.env.NEXT_PUBLIC_ENERGY_TOKEN_ADDRESS 
 export const energyTokenAbi = [
   {
     type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "balance", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "approve",
     stateMutability: "nonpayable",
     inputs: [
@@ -50,5 +57,12 @@ export const marketplaceAbi = [
       { name: "price", type: "uint256" },
     ],
     outputs: [{ name: "orderId", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "cancelOrder",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "orderId", type: "uint256" }],
+    outputs: [],
   },
 ] as const;

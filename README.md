@@ -14,10 +14,12 @@ The project currently includes a working end-to-end local marketplace slice:
 	purchases, and supports seller cancellation with escrow refunds.
 - NestJS backend: indexes `SellOrderCreated`, `EnergyPurchased`, and
 	`SellOrderCancelled` events into SQLite and exposes active offers through
-	`GET /v1/marketplace/offers`.
-- Next.js frontend: connects a wallet, reads orders, creates offers through
-	`approve` followed by `createSellOrder`, buys active orders, and displays
-	transaction progress and errors.
+	`GET /v1/marketplace/offers` and the trade history through
+	`GET /v1/marketplace/history` (optionally `?account=0x...` for one wallet).
+- Next.js frontend: connects a wallet, shows its ENRG balance, reads orders,
+	creates offers through `approve` followed by `createSellOrder`, buys active
+	orders, lets sellers cancel their own offers, lists the transaction history,
+	and displays transaction progress and errors.
 - Local development bootstrap: starts Hardhat, deploys the contracts, seeds the
 	local wallet with test ETH and energy, generates ignored environment files,
 	and starts the backend and frontend.
@@ -129,8 +131,8 @@ npm run release
 	used on a live network.
 
 Planned follow-up work is indexer restart/reorg handling, settlement API
-hardening and persistence, richer frontend live-state updates, seller
-cancellation UI, and broader integration coverage.
+hardening and persistence, richer frontend live-state updates, and broader
+integration coverage.
 
 ## Future Scope
 
