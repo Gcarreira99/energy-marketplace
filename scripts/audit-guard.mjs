@@ -215,11 +215,21 @@ function checkGitignore() {
 }
 
 // ----------------------------------------------------------- history
+// True when every match in the commit's changed lines is a public test key.
+function onlyKnownTestKeys(sha, re) {
+  const res = run("git", ["show", "--format=", "-U0", sha], { cwd: root });
+  const changed = (res.out || "").split("\n").filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l));
+  const all = new RegExp(re.source, "gi");
+  const keys = changed.flatMap((l) => l.match(all) || []);
+  return keys.length > 0 && keys.every((k) => knownTestKeys.has(k.toLowerCase()));
+}
+
 function checkHistory() {
   for (const rule of secretRules) {
     const res = run("git", ["log", "--all", "--oneline", "-i", "-P", `-G${rule.re.source}`, "--", "."], { cwd: root });
     const commits = (res.out || "").split("\n").filter(Boolean).slice(0, 20);
     for (const c of commits) {
+      if (rule.name === "EVM private key" && onlyKnownTestKeys(c.split(" ")[0], rule.re)) continue;
       record("history", "high", `git history — ${rule.name}`, `introduced or touched in: ${c}`);
     }
   }
