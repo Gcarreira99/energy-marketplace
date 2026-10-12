@@ -71,7 +71,14 @@ export function OnchainMarketplace() {
     isPending: isCreatePending,
     writeContract: writeCreate,
   } = useWriteContract();
+  const {
+    data: cancelHash,
+    error: cancelError,
+    isPending: isCancelPending,
+    writeContract: writeCancel,
+  } = useWriteContract();
   const { isLoading: isBuyConfirming, isSuccess: buySuccess } = useWaitForTransactionReceipt({ hash: buyHash });
+  const { isLoading: isCancelConfirming, isSuccess: cancelSuccess } = useWaitForTransactionReceipt({ hash: cancelHash });
   const { isLoading: isApprovalConfirming, isSuccess: approvalSuccess } = useWaitForTransactionReceipt({ hash: approvalHash });
   const { isLoading: isCreateConfirming, isSuccess: createSuccess } = useWaitForTransactionReceipt({ hash: createHash });
   const numericOrderId = BigInt(orderId || "0");
@@ -88,6 +95,25 @@ export function OnchainMarketplace() {
     args: [numericOrderId],
     query: { enabled: contractConfigured && numericOrderId > 0n },
   });
+
+  const { data: energyBalance, refetch: refetchBalance } = useReadContract({
+    address: energyTokenAddress,
+    abi: energyTokenAbi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(process.env.NEXT_PUBLIC_ENERGY_TOKEN_ADDRESS) && Boolean(address) },
+  });
+  const isOwnOrder = Boolean(order && address && order.seller.toLowerCase() === address.toLowerCase());
+
+  function cancelSelectedOrder() {
+    if (!order?.active || !isOwnOrder || !contractConfigured) return;
+    writeCancel({
+      address: marketplaceAddress,
+      abi: marketplaceAbi,
+      functionName: "cancelOrder",
+      args: [numericOrderId],
+    });
+  }
 
   function buyOrder() {
     if (!order || !contractConfigured) return;
@@ -153,15 +179,18 @@ export function OnchainMarketplace() {
     });
     refreshOffers();
     void refetch();
-  }, [createHash, createSuccess, pendingCreateStep, refetch]);
+    void refetchBalance();
+  }, [createHash, createSuccess, pendingCreateStep, refetch, refetchBalance]);
 
   useEffect(() => {
-    if (!buySuccess) return;
+    if (!buySuccess && !cancelSuccess) return;
     refreshOffers();
     void refetch();
-  }, [buySuccess, refetch]);
+    void refetchBalance();
+  }, [buySuccess, cancelSuccess, refetch, refetchBalance]);
 
-  const hasTransactionError = Boolean(buyError || approvalError || createError);
+  const transactionError = buyError ?? cancelError ?? approvalError ?? createError;
+  const hasTransactionError = Boolean(transactionError);
   const activePendingCreateStep = hasTransactionError ? null : pendingCreateStep;
 
   const actionStatus = activePendingCreateStep === "approve"
@@ -170,17 +199,21 @@ export function OnchainMarketplace() {
       ? "Submitting sell order..."
       : isBuyPending
         ? "Waiting for buy confirmation..."
-        : isApprovalPending
-          ? "Waiting for approval confirmation..."
-          : isCreatePending
-            ? "Waiting for offer confirmation..."
-            : isBuyConfirming
-              ? "Confirming purchase..."
-              : isApprovalConfirming
-                ? "Approving token..."
-                : isCreateConfirming
-                  ? "Confirming sell order..."
-                  : null;
+        : isCancelPending
+          ? "Waiting for cancel confirmation..."
+          : isApprovalPending
+            ? "Waiting for approval confirmation..."
+            : isCreatePending
+              ? "Waiting for offer confirmation..."
+              : isBuyConfirming
+                ? "Confirming purchase..."
+                : isCancelConfirming
+                  ? "Cancelling order and refunding escrow..."
+                  : isApprovalConfirming
+                    ? "Approving token..."
+                    : isCreateConfirming
+                      ? "Confirming sell order..."
+                      : null;
 
   return (
     <section id="onchain-marketplace" className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl shadow-slate-300/30">
@@ -193,9 +226,14 @@ export function OnchainMarketplace() {
           </p>
         </div>
         {isConnected ? (
-          <button onClick={() => disconnect()} className="rounded-full border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-400">
-            {address?.slice(0, 6)}...{address?.slice(-4)}
-          </button>
+          <div className="flex items-center gap-3">
+            <span className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-emerald-300">
+              {energyBalance === undefined ? "-" : energyBalance.toString()} ENRG
+            </span>
+            <button onClick={() => disconnect()} className="rounded-full border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-400">
+              {address?.slice(0, 6)}...{address?.slice(-4)}
+            </button>
+          </div>
         ) : (
           <button onClick={connectWallet} disabled={isConnectPending} className="rounded-full bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60">
             {isConnectPending ? "Connecting..." : "Connect wallet"}
@@ -220,12 +258,19 @@ export function OnchainMarketplace() {
               <span>{order.quantity.toString()} kWh</span>
               <span>{formatEther(order.price)} ETH</span>
               <span className={order.active ? "text-emerald-300" : "text-slate-400"}>{order.active ? "Active" : "Closed"}</span>
+              {isOwnOrder && <span className="text-cyan-300">Your offer</span>}
             </div>
           ) : "No order found"}
         </div>
-        <button disabled={!isConnected || !order?.active || isBuyPending || isBuyConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
-          {isBuyPending ? "Confirm in wallet..." : isBuyConfirming ? "Confirming..." : "Buy energy"}
-        </button>
+        {isOwnOrder ? (
+          <button disabled={!order?.active || isCancelPending || isCancelConfirming} onClick={cancelSelectedOrder} className="rounded-2xl bg-rose-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
+            {isCancelPending ? "Confirm in wallet..." : isCancelConfirming ? "Cancelling..." : "Cancel offer"}
+          </button>
+        ) : (
+          <button disabled={!isConnected || !order?.active || isBuyPending || isBuyConfirming} onClick={buyOrder} className="rounded-2xl bg-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">
+            {isBuyPending ? "Confirm in wallet..." : isBuyConfirming ? "Confirming..." : "Buy energy"}
+          </button>
+        )}
       </div>
 
       <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
@@ -277,7 +322,9 @@ export function OnchainMarketplace() {
       {approvalHash && <p className="mt-2 text-sm text-slate-300">Approval tx: {approvalHash.slice(0, 12)}...</p>}
       {createHash && <p className="mt-2 text-sm text-slate-300">Offer tx: {createHash.slice(0, 12)}...</p>}
       {createSuccess && <p className="mt-2 text-sm text-emerald-300">Offer created successfully.</p>}
-      {(buyError || approvalError || createError) && <p className="mt-2 text-sm text-rose-300">{(buyError ?? approvalError ?? createError)?.message.slice(0, 160)}</p>}
+      {cancelHash && <p className="mt-2 text-sm text-slate-300">Cancel tx: {cancelHash.slice(0, 12)}...</p>}
+      {cancelSuccess && <p className="mt-2 text-sm text-emerald-300">Offer cancelled and energy returned to your wallet.</p>}
+      {transactionError && <p className="mt-2 text-sm text-rose-300">{transactionError.message.slice(0, 160)}</p>}
     </section>
   );
 }

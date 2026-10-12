@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { OnchainMarketplace } from "@/components/OnchainMarketplace";
+import { TransactionHistory } from "@/components/TransactionHistory";
 
 const marketTrends = [
   { day: "Mon", price: 42 },
@@ -213,38 +214,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/50">
-              <p className="text-sm font-medium text-slate-500">Recent activity</p>
-              <ul className="mt-6 space-y-4">
-                <li className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">Offer accepted</p>
-                    <p className="text-sm text-slate-500">8:42 AM · Solar bid matched</p>
-                  </div>
-                  <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
-                    +2.8 MW
-                  </span>
-                </li>
-                <li className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">Price update</p>
-                    <p className="text-sm text-slate-500">7:05 AM · Clearing price shifted</p>
-                  </div>
-                  <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700">
-                    +4.5%
-                  </span>
-                </li>
-                <li className="flex items-center justify-between rounded-3xl bg-slate-50 px-4 py-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">Settlement ready</p>
-                    <p className="text-sm text-slate-500">6:18 AM · Confirm payments</p>
-                  </div>
-                  <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">
-                    Today
-                  </span>
-                </li>
-              </ul>
-            </div>
+            <TransactionHistory />
           </aside>
         </section>
       </main>
