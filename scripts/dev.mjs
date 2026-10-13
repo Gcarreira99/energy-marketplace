@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { needsInstall } from "./lib/dependencies.mjs";
 import { getProjectPids, stopProjectProcesses } from "./lib/project-processes.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -167,8 +168,10 @@ try {
   let backendStarted = false;
   let frontendStarted = false;
 
-  if (!existsSync(join(contractsDir, "node_modules")) || !existsSync(join(backendDir, "node_modules")) || !existsSync(join(frontendDir, "node_modules"))) {
-    throw new Error("Dependencies are missing. Run npm install in smart-contracts, backend, and frontend first.");
+  for (const dir of [contractsDir, backendDir, frontendDir]) {
+    if (!needsInstall(dir)) continue;
+    console.log(`Installing missing or outdated dependencies in ${relative(root, dir)}...`);
+    await run("npm", ["install"], dir);
   }
 
   const rpcAvailableBeforeCleanup = await isRpcAvailable();
