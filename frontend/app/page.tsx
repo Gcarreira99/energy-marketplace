@@ -8,22 +8,14 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceLine,
 } from "recharts";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { EnergySimulation } from "@/components/EnergySimulation";
 import { OnchainMarketplace } from "@/components/OnchainMarketplace";
 import { TransactionHistory } from "@/components/TransactionHistory";
 import { useRealtime } from "@/lib/realtime";
-
-const marketTrends = [
-  { day: "Mon", price: 42 },
-  { day: "Tue", price: 48 },
-  { day: "Wed", price: 45 },
-  { day: "Thu", price: 53 },
-  { day: "Fri", price: 49 },
-  { day: "Sat", price: 56 },
-  { day: "Sun", price: 51 },
-];
+import { formatEthPerKwh, useSimulation, useSimulationFeed } from "@/lib/simulation";
 
 const producers = [
   { name: "BrightSun Power", capacity: "68 MW" },
@@ -31,12 +23,13 @@ const producers = [
   { name: "PeakStore Battery", capacity: "30 MW" },
 ];
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(value);
+// Charts read better in micro-ETH: the default base price is 100 µETH per kWh.
+function weiToMicroEth(wei: string) {
+  return Number(BigInt(wei)) / 1e12;
+}
+
+function formatSimulatedHour(value: string) {
+  return new Date(value).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 }
 
 export default function Home() {
@@ -44,6 +37,16 @@ export default function Home() {
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const isLive = useRealtime();
+  useSimulationFeed();
+  const { state: simulation, history } = useSimulation();
+  const price = simulation?.price;
+  const priceChange = price
+    ? (Number(BigInt(price.weiPerKwh)) / Number(BigInt(price.baseWeiPerKwh)) - 1) * 100
+    : 0;
+  const priceHistory = history.map((entry) => ({
+    time: formatSimulatedHour(entry.simulatedTime),
+    price: weiToMicroEth(entry.priceWeiPerKwh),
+  }));
 
   function connectWallet() {
     const connector = connectors.find((candidate) => candidate.id === "mock") ?? connectors[0];
@@ -95,11 +98,16 @@ export default function Home() {
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-3xl bg-slate-50 p-4">
                     <p className="text-sm text-slate-500">Market price</p>
-                    <p className="mt-2 text-xl font-semibold">{formatCurrency(0.135)}</p>
+                    <p className="mt-2 text-xl font-semibold">{price ? formatEthPerKwh(price.weiPerKwh) : "-"}</p>
+                    {price && (
+                      <p className={`mt-1 text-xs font-medium ${priceChange > 0 ? "text-rose-600" : priceChange < 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                        {priceChange >= 0 ? "+" : ""}{priceChange.toFixed(1)}% vs base · {price.imbalanceKw >= 0 ? "shortage" : "surplus"} {Math.abs(price.imbalanceKw).toFixed(1)} kW
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-3xl bg-slate-50 p-4">
-                    <p className="text-sm text-slate-500">Active nodes</p>
-                    <p className="mt-2 text-xl font-semibold">14</p>
+                    <p className="text-sm text-slate-500">Households</p>
+                    <p className="mt-2 text-xl font-semibold">{simulation ? simulation.households.length : "-"}</p>
                   </div>
                   <div className="rounded-3xl bg-slate-50 p-4">
                     <p className="text-sm text-slate-500">Cleared volume</p>
@@ -115,11 +123,12 @@ export default function Home() {
                   <div>
                     <p className="text-sm font-medium text-slate-500">Market trend</p>
                     <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
-                      Weekly clearing price
+                      Price over the simulated day
                     </h2>
+                    <p className="mt-1 text-xs text-slate-400">Base price + k × (demand - supply)</p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
-                    USD / kWh
+                    µETH / kWh
                   </span>
                 </div>
 
@@ -131,12 +140,15 @@ export default function Home() {
                     minHeight={0}
                     initialDimension={{ width: 640, height: 320 }}
                   >
-                    <LineChart data={marketTrends} margin={{ top: 12, right: 12, left: -8, bottom: 0 }}>
+                    <LineChart data={priceHistory} margin={{ top: 12, right: 12, left: -8, bottom: 0 }}>
                       <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" />
-                      <XAxis dataKey="day" stroke="#64748b" />
-                      <YAxis stroke="#64748b" />
-                      <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
-                      <Line type="monotone" dataKey="price" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
+                      <XAxis dataKey="time" stroke="#64748b" minTickGap={24} />
+                      <YAxis stroke="#64748b" domain={["auto", "auto"]} />
+                      <Tooltip formatter={(value) => [`${Number(value ?? 0).toFixed(1)} µETH/kWh`, "Price"]} />
+                      {price && (
+                        <ReferenceLine y={weiToMicroEth(price.baseWeiPerKwh)} stroke="#94a3b8" strokeDasharray="4 4" label={{ value: "Base", position: "insideTopRight", fill: "#64748b", fontSize: 12 }} />
+                      )}
+                      <Line type="monotone" dataKey="price" stroke="#2563eb" strokeWidth={3} dot={false} isAnimationActive={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

@@ -30,6 +30,14 @@ The project currently includes a working end-to-end local marketplace slice:
 	`POST /v1/simulation/households/home/claim` mints its whole kWh of surplus as
 	ENRG, ready to sell. `SIMULATION_TICK_MS` and `SIMULATION_MINUTES_PER_TICK`
 	change the pace.
+- Dynamic pricing: every simulation update sets the market price with the
+	rule `price = base + k × (demand - supply)`, clamped between a fifth and
+	five times the base. The defaults are 0.0001 ETH per kWh and 0.000003 ETH
+	per kW of imbalance; `PRICING_BASE_WEI_PER_KWH` and `PRICING_K_WEI_PER_KW`
+	override them. The price is part of `GET /v1/simulation/state`, each
+	`/v1/simulation/history` entry and every `simulation.tick` event. The
+	dashboard shows it live, charts it over the simulated day, and the offer
+	form suggests a total price at the market rate.
 - Real-time updates: the backend pushes events over a WebSocket at
 	`ws://<backend>/v1/realtime`. `simulation.tick` carries the full simulation
 	state on every update, and `market.activity` carries each new listing,

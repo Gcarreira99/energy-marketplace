@@ -1,37 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { ENERGY_BALANCE_CHANGED } from "@/lib/events";
-import { useRealtime } from "@/lib/realtime";
-
-type Weather = "sunny" | "cloudy" | "rainy";
-
-type Household = {
-  id: string;
-  name: string;
-  wallet: string | null;
-  solarCapacityKw: number;
-  generationKw: number;
-  consumptionKw: number;
-  netKw: number;
-  storedKwh: number;
-  gridImportKwh: number;
-};
-
-type SimulationState = {
-  tick: number;
-  simulatedTime: string;
-  weather: Weather;
-  minutesPerTick: number;
-  generationKw: number;
-  consumptionKw: number;
-  netKw: number;
-  mintingEnabled: boolean;
-  households: Household[];
-};
-
-// Ticks are pushed over the realtime socket; poll only while it is down.
-const FALLBACK_REFRESH_INTERVAL_MS = 5_000;
+import { Household, Weather, refreshSimulation, useSimulation } from "@/lib/simulation";
 
 const weatherStyles: Record<Weather, { label: string; badge: string }> = {
   sunny: { label: "Sunny · solar +30%", badge: "bg-amber-100 text-amber-700" },
@@ -53,36 +24,9 @@ function formatSimulatedTime(value: string) {
 
 export function EnergySimulation() {
   const apiUrl = process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:3001";
-  const [state, setState] = useState<SimulationState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { state, error } = useSimulation();
   const [claiming, setClaiming] = useState<string | null>(null);
   const [claimMessage, setClaimMessage] = useState<{ text: string; ok: boolean } | null>(null);
-
-  const refreshState = useCallback(() => {
-    fetch(`${apiUrl}/v1/simulation/state`)
-      .then((response) => {
-        if (!response.ok) throw new Error("Simulation API unavailable");
-        return response.json() as Promise<SimulationState>;
-      })
-      .then((nextState) => {
-        setState(nextState);
-        setError(null);
-      })
-      .catch(() => setError("Connect the backend to see the energy simulation."));
-  }, [apiUrl]);
-
-  const isLive = useRealtime((event, data) => {
-    if (event !== "simulation.tick") return;
-    setState(data as SimulationState);
-    setError(null);
-  });
-
-  useEffect(() => {
-    refreshState();
-    if (isLive) return;
-    const interval = setInterval(refreshState, FALLBACK_REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [isLive, refreshState]);
 
   function claimSurplus(household: Household) {
     setClaiming(household.id);
@@ -97,7 +41,7 @@ export function EnergySimulation() {
       .catch((claimError: Error) => setClaimMessage({ text: claimError.message, ok: false }))
       .finally(() => {
         setClaiming(null);
-        refreshState();
+        refreshSimulation();
       });
   }
 
