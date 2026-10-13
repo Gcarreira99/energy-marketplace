@@ -44,13 +44,10 @@ connect wallet -> approve ENRG -> create offer -> index active offer
 
 ## Run Locally
 
-Install dependencies once:
-
-```shell
-npm install --prefix smart-contracts
-npm install --prefix backend
-npm install --prefix frontend
-```
+`npm run dev` installs dependencies in `smart-contracts`, `backend`, and
+`frontend` whenever they are missing or no longer match `package-lock.json`
+(for example after pulling a change that adds a package), so there is no
+separate install step.
 
 Copy the root environment template and fill in local values when needed:
 
