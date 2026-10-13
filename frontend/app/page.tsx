@@ -10,6 +10,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { EnergySimulation } from "@/components/EnergySimulation";
 import { OnchainMarketplace } from "@/components/OnchainMarketplace";
 import { TransactionHistory } from "@/components/TransactionHistory";
 
@@ -21,14 +22,6 @@ const marketTrends = [
   { day: "Fri", price: 49 },
   { day: "Sat", price: 56 },
   { day: "Sun", price: 51 },
-];
-
-const gridNodes = [
-  { label: "Solar Farm", x: 10, y: 20, value: 185 },
-  { label: "Wind Hub", x: 70, y: 12, value: 220 },
-  { label: "Battery", x: 48, y: 62, value: 120 },
-  { label: "Load Center", x: 28, y: 82, value: 310 },
-  { label: "Market", x: 82, y: 78, value: 95 },
 ];
 
 const producers = [
@@ -180,39 +173,7 @@ export default function Home() {
           </div>
 
           <aside className="space-y-6">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/50">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-500">Grid topology</p>
-                  <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900">
-                    Node health and routing
-                  </h2>
-                </div>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
-                  Stable
-                </span>
-              </div>
-
-              <div className="relative mt-8 h-[320px] overflow-hidden rounded-[2rem] bg-slate-950/95 p-4 text-slate-100">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.18),transparent_30%)]" />
-                <div className="relative h-full w-full">
-                  {gridNodes.map((node) => (
-                    <div
-                      key={node.label}
-                      className="absolute flex flex-col items-center text-center"
-                      style={{ left: `${node.x}%`, top: `${node.y}%`, transform: "translate(-50%, -50%)" }}
-                    >
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100/10 ring-1 ring-slate-200/10 text-xs font-semibold text-white">
-                        {node.value} MW
-                      </div>
-                      <span className="mt-3 max-w-[8rem] text-[0.78rem] text-slate-300">
-                        {node.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <EnergySimulation />
 
             <TransactionHistory />
           </aside>

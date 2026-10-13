@@ -16,6 +16,7 @@ import {
   marketplaceAbi,
   marketplaceAddress,
 } from "@/lib/contracts";
+import { ENERGY_BALANCE_CHANGED } from "@/lib/events";
 
 type ActiveOffer = {
   orderId: string;
@@ -181,6 +182,12 @@ export function OnchainMarketplace() {
     void refetch();
     void refetchBalance();
   }, [createHash, createSuccess, pendingCreateStep, refetch, refetchBalance]);
+
+  useEffect(() => {
+    const onBalanceChanged = () => void refetchBalance();
+    window.addEventListener(ENERGY_BALANCE_CHANGED, onBalanceChanged);
+    return () => window.removeEventListener(ENERGY_BALANCE_CHANGED, onBalanceChanged);
+  }, [refetchBalance]);
 
   useEffect(() => {
     if (!buySuccess && !cancelSuccess) return;
