@@ -13,6 +13,7 @@ import {
   SimulationEngine,
   SimulationTotals,
 } from "../engine/simulation-engine";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { EnergyMinterService } from "./energy-minter.service";
 
 // One simulated day at the default 15 minutes per tick.
@@ -36,7 +37,10 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
   private readonly history: SimulationTotals[] = [];
   private timer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly minter: EnergyMinterService) {
+  constructor(
+    private readonly minter: EnergyMinterService,
+    private readonly realtime: RealtimeGateway,
+  ) {
     this.tickMs = readPositiveNumber("SIMULATION_TICK_MS", 10_000);
     const homeWallet = process.env.SIMULATION_HOME_WALLET ?? null;
     if (homeWallet !== null && !isAddress(homeWallet)) {
@@ -91,6 +95,7 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const txHash = await this.minter.mint(household.wallet, amount);
+      this.realtime.broadcast("simulation.tick", this.getState());
       return { householdId, wallet: household.wallet, amount, txHash };
     } catch (error) {
       this.engine.deposit(householdId, amount);
@@ -110,5 +115,6 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
       netKw: snapshot.netKw,
     });
     if (this.history.length > HISTORY_LENGTH) this.history.shift();
+    this.realtime.broadcast("simulation.tick", this.getState());
   }
 }

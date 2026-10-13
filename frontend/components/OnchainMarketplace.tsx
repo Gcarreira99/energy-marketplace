@@ -17,6 +17,7 @@ import {
   marketplaceAddress,
 } from "@/lib/contracts";
 import { ENERGY_BALANCE_CHANGED } from "@/lib/events";
+import { useRealtime } from "@/lib/realtime";
 
 type ActiveOffer = {
   orderId: string;
@@ -182,6 +183,13 @@ export function OnchainMarketplace() {
     void refetch();
     void refetchBalance();
   }, [createHash, createSuccess, pendingCreateStep, refetch, refetchBalance]);
+
+  // Someone else's listing, purchase or cancellation changes the order book.
+  useRealtime((event) => {
+    if (event !== "market.activity") return;
+    refreshOffers();
+    void refetch();
+  });
 
   useEffect(() => {
     const onBalanceChanged = () => void refetchBalance();

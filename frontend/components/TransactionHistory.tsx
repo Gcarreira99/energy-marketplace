@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount } from "wagmi";
+import { useRealtime } from "@/lib/realtime";
 
 type MarketActivity = {
   id: number;
@@ -20,8 +21,8 @@ type MarketActivity = {
 
 type HistoryScope = "all" | "mine";
 
-// Live push arrives with the real-time phase; until then poll the indexer.
-const REFRESH_INTERVAL_MS = 10_000;
+// New activity is pushed over the realtime socket; poll only while it is down.
+const FALLBACK_REFRESH_INTERVAL_MS = 10_000;
 
 const kindStyles: Record<MarketActivity["kind"], { label: string; badge: string }> = {
   created: { label: "Offer listed", badge: "bg-sky-100 text-sky-700" },
@@ -62,11 +63,16 @@ export function TransactionHistory() {
       .catch(() => setError("Connect the backend to load transaction history."));
   }, [account]);
 
+  const isLive = useRealtime((event) => {
+    if (event === "market.activity") refreshHistory();
+  });
+
   useEffect(() => {
     refreshHistory();
-    const interval = setInterval(refreshHistory, REFRESH_INTERVAL_MS);
+    if (isLive) return;
+    const interval = setInterval(refreshHistory, FALLBACK_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [refreshHistory]);
+  }, [isLive, refreshHistory]);
 
   function describe(entry: MarketActivity) {
     const me = address?.toLowerCase();

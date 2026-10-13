@@ -13,6 +13,7 @@ import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { EnergySimulation } from "@/components/EnergySimulation";
 import { OnchainMarketplace } from "@/components/OnchainMarketplace";
 import { TransactionHistory } from "@/components/TransactionHistory";
+import { useRealtime } from "@/lib/realtime";
 
 const marketTrends = [
   { day: "Mon", price: 42 },
@@ -42,6 +43,7 @@ export default function Home() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
+  const isLive = useRealtime();
 
   function connectWallet() {
     const connector = connectors.find((candidate) => candidate.id === "mock") ?? connectors[0];
@@ -61,6 +63,13 @@ export default function Home() {
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <span
+              title={isLive ? "Receiving live updates" : "Live updates unavailable; refreshing periodically"}
+              className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold ${isLive ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+            >
+              <span className={`h-2 w-2 rounded-full ${isLive ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
+              {isLive ? "Live" : "Reconnecting"}
+            </span>
             <button onClick={() => document.getElementById("onchain-marketplace")?.scrollIntoView({ behavior: "smooth" })} className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800">
               Create offer
             </button>
