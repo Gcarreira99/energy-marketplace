@@ -30,6 +30,13 @@ The project currently includes a working end-to-end local marketplace slice:
 	`POST /v1/simulation/households/home/claim` mints its whole kWh of surplus as
 	ENRG, ready to sell. `SIMULATION_TICK_MS` and `SIMULATION_MINUTES_PER_TICK`
 	change the pace.
+- Real-time updates: the backend pushes events over a WebSocket at
+	`ws://<backend>/v1/realtime`. `simulation.tick` carries the full simulation
+	state on every update, and `market.activity` carries each new listing,
+	purchase or cancellation as soon as it is indexed. The dashboard shows a
+	"Live" badge while connected, reconnects with backoff, and falls back to
+	polling the REST endpoints while the socket is down. Connections from origins
+	other than `FRONTEND_ORIGIN` are refused.
 - Local development bootstrap: starts Hardhat, deploys the contracts, seeds the
 	local wallet with test ETH and energy, generates ignored environment files,
 	and starts the backend and frontend.
@@ -132,16 +139,16 @@ npm run release
 - The backend settlement endpoint uses a configured backend signer as an
 	operator buyer. It is a demo flow, not wallet-authenticated production
 	settlement.
-- Offers are event-indexed in SQLite and the frontend currently refreshes its
-	offer list through the API rather than using a realtime transport.
+- Offers are event-indexed in SQLite. On a `market.activity` event the
+	frontend re-reads offers and history over REST rather than patching them
+	from the event payload.
 - The surplus claim endpoint is unauthenticated and mints with the token owner
 	key. It is a local demo flow only.
 - Local development accounts and private keys are test-only and must never be
 	used on a live network.
 
 Planned follow-up work is indexer restart/reorg handling, settlement API
-hardening and persistence, richer frontend live-state updates, and broader
-integration coverage.
+hardening and persistence, and broader integration coverage.
 
 ## Future Scope
 

@@ -12,14 +12,24 @@ export class MarketActivityRepository {
     private readonly repository: Repository<MarketActivity>,
   ) {}
 
+  // Returns the stored row, or null when the event was already recorded.
   async record(activity: Omit<MarketActivity, "id">) {
     // Backfill replays events the live listener may already have stored.
+    const existing = await this.repository.existsBy({
+      txHash: activity.txHash,
+      logIndex: activity.logIndex,
+    });
+    if (existing) return null;
     await this.repository
       .createQueryBuilder()
       .insert()
       .values({ ...activity })
       .orIgnore()
       .execute();
+    return this.repository.findOneBy({
+      txHash: activity.txHash,
+      logIndex: activity.logIndex,
+    });
   }
 
   findRecent(account?: string) {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ENERGY_BALANCE_CHANGED } from "@/lib/events";
+import { useRealtime } from "@/lib/realtime";
 
 type Weather = "sunny" | "cloudy" | "rainy";
 
@@ -29,8 +30,8 @@ type SimulationState = {
   households: Household[];
 };
 
-// Live push arrives with the real-time phase; until then poll the backend.
-const REFRESH_INTERVAL_MS = 5_000;
+// Ticks are pushed over the realtime socket; poll only while it is down.
+const FALLBACK_REFRESH_INTERVAL_MS = 5_000;
 
 const weatherStyles: Record<Weather, { label: string; badge: string }> = {
   sunny: { label: "Sunny · solar +30%", badge: "bg-amber-100 text-amber-700" },
@@ -70,11 +71,18 @@ export function EnergySimulation() {
       .catch(() => setError("Connect the backend to see the energy simulation."));
   }, [apiUrl]);
 
+  const isLive = useRealtime((event, data) => {
+    if (event !== "simulation.tick") return;
+    setState(data as SimulationState);
+    setError(null);
+  });
+
   useEffect(() => {
     refreshState();
-    const interval = setInterval(refreshState, REFRESH_INTERVAL_MS);
+    if (isLive) return;
+    const interval = setInterval(refreshState, FALLBACK_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [refreshState]);
+  }, [isLive, refreshState]);
 
   function claimSurplus(household: Household) {
     setClaiming(household.id);

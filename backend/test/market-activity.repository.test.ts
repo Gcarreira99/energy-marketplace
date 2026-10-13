@@ -38,9 +38,11 @@ test("market activity is deduplicated, newest first, and filterable by account",
     txHash: "0xaaa",
     logIndex: 0,
   };
-  await repository.record(created);
+  const stored = await repository.record(created);
+  assert.equal(stored?.kind, "created");
+  assert.equal(typeof stored?.id, "number");
   // The backfill replays events the live listener already stored.
-  await repository.record(created);
+  assert.equal(await repository.record(created), null);
   await repository.record({
     ...created,
     kind: "purchased",

@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Contract, ContractEventPayload, EventLog, JsonRpcProvider } from "ethers";
+import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { MarketActivityKind } from "../entities/market-activity.entity";
 import { IndexedOfferRepository } from "../repositories/indexed-offer.repository";
 import { MarketActivityRepository } from "../repositories/market-activity.repository";
@@ -18,6 +19,7 @@ export class MarketplaceIndexerService implements OnModuleInit, OnModuleDestroy 
   constructor(
     private readonly offerRepository: IndexedOfferRepository,
     private readonly activityRepository: MarketActivityRepository,
+    private readonly realtime: RealtimeGateway,
   ) {
     const rpcUrl = process.env.RPC_URL;
     const marketplaceAddress = process.env.MARKETPLACE_ADDRESS;
@@ -183,7 +185,7 @@ export class MarketplaceIndexerService implements OnModuleInit, OnModuleDestroy 
     },
   ) {
     const block = await log.getBlock();
-    await this.activityRepository.record({
+    const recorded = await this.activityRepository.record({
       kind,
       orderId: details.orderId.toString(),
       seller: details.seller,
@@ -195,6 +197,7 @@ export class MarketplaceIndexerService implements OnModuleInit, OnModuleDestroy 
       txHash: log.transactionHash,
       logIndex: log.index,
     });
+    if (recorded) this.realtime.broadcast("market.activity", recorded);
   }
 }
 
