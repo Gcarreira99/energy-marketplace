@@ -13,6 +13,7 @@ import {
   SimulationEngine,
   SimulationTotals,
 } from "../engine/simulation-engine";
+import { DEFAULT_PRICING, MarketPrice, PricingConfig, marketPrice } from "../engine/pricing";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { EnergyMinterService } from "./energy-minter.service";
 
@@ -29,12 +30,25 @@ function readPositiveNumber(name: string, fallback: number) {
   return value;
 }
 
+function readPositiveWei(name: string, fallback: bigint) {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (!/^\d+$/.test(raw) || BigInt(raw) <= 0n) {
+    throw new Error(`${name} must be a positive integer amount of wei`);
+  }
+  return BigInt(raw);
+}
+
+export type SimulationHistoryEntry = SimulationTotals & { priceWeiPerKwh: string };
+
 @Injectable()
 export class SimulationService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SimulationService.name);
   private readonly engine: SimulationEngine;
   private readonly tickMs: number;
-  private readonly history: SimulationTotals[] = [];
+  private readonly pricing: PricingConfig;
+  private readonly history: SimulationHistoryEntry[] = [];
+  private price: MarketPrice | null = null;
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -42,6 +56,10 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
     private readonly realtime: RealtimeGateway,
   ) {
     this.tickMs = readPositiveNumber("SIMULATION_TICK_MS", 10_000);
+    this.pricing = {
+      baseWeiPerKwh: readPositiveWei("PRICING_BASE_WEI_PER_KWH", DEFAULT_PRICING.baseWeiPerKwh),
+      kWeiPerKw: readPositiveWei("PRICING_K_WEI_PER_KW", DEFAULT_PRICING.kWeiPerKw),
+    };
     const homeWallet = process.env.SIMULATION_HOME_WALLET ?? null;
     if (homeWallet !== null && !isAddress(homeWallet)) {
       throw new Error("SIMULATION_HOME_WALLET must be an address");
@@ -71,7 +89,12 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
   }
 
   getState() {
-    return { ...this.engine.snapshot(), mintingEnabled: this.minter.enabled };
+    const snapshot = this.engine.snapshot();
+    return {
+      ...snapshot,
+      price: this.price ?? marketPrice(snapshot.consumptionKw, snapshot.generationKw, this.pricing),
+      mintingEnabled: this.minter.enabled,
+    };
   }
 
   getHistory() {
@@ -106,6 +129,7 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
 
   private tick() {
     const snapshot = this.engine.tick();
+    this.price = marketPrice(snapshot.consumptionKw, snapshot.generationKw, this.pricing);
     this.history.push({
       tick: snapshot.tick,
       simulatedTime: snapshot.simulatedTime,
@@ -113,6 +137,7 @@ export class SimulationService implements OnModuleInit, OnModuleDestroy {
       generationKw: snapshot.generationKw,
       consumptionKw: snapshot.consumptionKw,
       netKw: snapshot.netKw,
+      priceWeiPerKwh: this.price.weiPerKwh,
     });
     if (this.history.length > HISTORY_LENGTH) this.history.shift();
     this.realtime.broadcast("simulation.tick", this.getState());

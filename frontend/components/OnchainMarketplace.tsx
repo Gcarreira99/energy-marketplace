@@ -18,6 +18,7 @@ import {
 } from "@/lib/contracts";
 import { ENERGY_BALANCE_CHANGED } from "@/lib/events";
 import { useRealtime } from "@/lib/realtime";
+import { formatEthPerKwh, useSimulation } from "@/lib/simulation";
 
 type ActiveOffer = {
   orderId: string;
@@ -41,6 +42,7 @@ export function OnchainMarketplace() {
   const { address, isConnected } = useAccount();
   const { connect, connectors, error: connectError, isPending: isConnectPending } = useConnect();
   const { disconnect } = useDisconnect();
+  const marketPrice = useSimulation().state?.price;
 
   function refreshOffers() {
     const apiUrl = process.env.NEXT_PUBLIC_MARKETPLACE_API_URL ?? "http://localhost:3001";
@@ -204,6 +206,7 @@ export function OnchainMarketplace() {
     void refetchBalance();
   }, [buySuccess, cancelSuccess, refetch, refetchBalance]);
 
+  const suggestedPrice = marketPrice ? BigInt(marketPrice.weiPerKwh) * BigInt(quantityInput || "0") : null;
   const transactionError = buyError ?? cancelError ?? approvalError ?? createError;
   const hasTransactionError = Boolean(transactionError);
   const activePendingCreateStep = hasTransactionError ? null : pendingCreateStep;
@@ -296,10 +299,26 @@ export function OnchainMarketplace() {
             <input value={quantityInput} onChange={(event) => setQuantityInput(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-300" />
           </label>
           <label className="text-sm text-slate-300">
-            Price (wei)
+            Total price (wei)
             <input value={priceInput} onChange={(event) => setPriceInput(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-300" />
+            <span className="mt-1 block text-xs text-slate-400">{formatEther(BigInt(priceInput || "0"))} ETH</span>
           </label>
         </div>
+        {marketPrice && suggestedPrice !== null && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-300">
+            <span>
+              Market price {formatEthPerKwh(marketPrice.weiPerKwh)}, so {quantityInput || "0"} kWh ≈ {formatEther(suggestedPrice)} ETH
+            </span>
+            <button
+              type="button"
+              onClick={() => setPriceInput(suggestedPrice.toString())}
+              disabled={suggestedPrice === 0n || priceInput === suggestedPrice.toString()}
+              className="rounded-full border border-cyan-300/60 px-3 py-1 text-xs font-semibold text-cyan-200 hover:border-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Use market price
+            </button>
+          </div>
+        )}
         <button
           disabled={!isConnected || !contractConfigured || isApprovalPending || isApprovalConfirming || isCreatePending || isCreateConfirming || activePendingCreateStep !== null}
           onClick={submitOffer}
