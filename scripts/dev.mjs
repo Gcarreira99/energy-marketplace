@@ -127,6 +127,16 @@ async function isHttpAvailable(url) {
   }
 }
 
+// The simulated "Your home" household belongs to the local wallet, and the token
+// owner mints its claimed surplus as ENRG.
+function simulationEnv(energyTokenAddress) {
+  return {
+    ENERGY_TOKEN_ADDRESS: energyTokenAddress ?? "",
+    SIMULATION_MINTER_PRIVATE_KEY: ownerPrivateKey,
+    SIMULATION_HOME_WALLET: localWalletAddress,
+  };
+}
+
 function writeConfiguration(privateKey) {
   const addresses = JSON.parse(readFileSync(addressesFile, "utf8"));
   const marketplaceAddress = addresses["EnergyMarketplaceModule#Marketplace"];
@@ -143,6 +153,7 @@ function writeConfiguration(privateKey) {
     FRONTEND_ORIGIN: frontendUrl,
     PORT: backendPort,
     DATABASE_PATH: "./marketplace.sqlite",
+    ...simulationEnv(energyTokenAddress),
   };
   writeFileSync(join(backendDir, ".env"), Object.entries(backendEnv).map(([key, value]) => `${key}=${value}`).join("\n") + "\n");
   writeFileSync(join(frontendDir, ".env.local"), `NEXT_PUBLIC_CHAIN=hardhat\nNEXT_PUBLIC_RPC_URL=${rpcUrl}\nNEXT_PUBLIC_USE_LOCAL_WALLET=true\nNEXT_PUBLIC_LOCAL_WALLET_ADDRESS=${localWalletAddress}\nNEXT_PUBLIC_MARKETPLACE_ADDRESS=${marketplaceAddress}\nNEXT_PUBLIC_ENERGY_TOKEN_ADDRESS=${energyTokenAddress}\nNEXT_PUBLIC_MARKETPLACE_API_URL=${backendUrl}\n`);
@@ -230,6 +241,7 @@ try {
   } else if (!backendStarted) {
     const privateKey = readFileSync(join(backendDir, ".env"), "utf8").match(/BACKEND_PRIVATE_KEY=(.+)/)?.[1];
     const marketplaceAddress = readFileSync(join(backendDir, ".env"), "utf8").match(/MARKETPLACE_ADDRESS=(.+)/)?.[1];
+    const energyTokenAddress = readFileSync(join(backendDir, ".env"), "utf8").match(/ENERGY_TOKEN_ADDRESS=(.+)/)?.[1];
     const backendEnv = {
       RPC_URL: rpcUrl,
       BACKEND_PRIVATE_KEY: privateKey ?? "",
@@ -238,6 +250,7 @@ try {
       FRONTEND_ORIGIN: frontendUrl,
       PORT: backendPort,
       DATABASE_PATH: "./marketplace.sqlite",
+      ...simulationEnv(energyTokenAddress),
     };
     if (!privateKey || !marketplaceAddress) {
       throw new Error("Backend configuration is missing. Start the chain from a clean state first.");

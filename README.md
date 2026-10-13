@@ -20,6 +20,16 @@ The project currently includes a working end-to-end local marketplace slice:
 	creates offers through `approve` followed by `createSellOrder`, buys active
 	orders, lets sellers cancel their own offers, lists the transaction history,
 	and displays transaction progress and errors.
+- Energy simulation: the backend simulates six households every 10 seconds,
+	moving a simulated clock 15 minutes per update. Solar output follows the time
+	of day and the weather (sunny adds 30%, cloudy and rainy cut it), and demand
+	has morning and evening peaks. Surplus builds up as stored energy, and a
+	deficit is drawn from the grid. `GET /v1/simulation/state` and
+	`GET /v1/simulation/history` expose it, and the dashboard shows it live.
+	"Your home" belongs to the local wallet, and
+	`POST /v1/simulation/households/home/claim` mints its whole kWh of surplus as
+	ENRG, ready to sell. `SIMULATION_TICK_MS` and `SIMULATION_MINUTES_PER_TICK`
+	change the pace.
 - Local development bootstrap: starts Hardhat, deploys the contracts, seeds the
 	local wallet with test ETH and energy, generates ignored environment files,
 	and starts the backend and frontend.
@@ -124,6 +134,8 @@ npm run release
 	settlement.
 - Offers are event-indexed in SQLite and the frontend currently refreshes its
 	offer list through the API rather than using a realtime transport.
+- The surplus claim endpoint is unauthenticated and mints with the token owner
+	key. It is a local demo flow only.
 - Local development accounts and private keys are test-only and must never be
 	used on a live network.
 
@@ -133,6 +145,5 @@ integration coverage.
 
 ## Future Scope
 
-Energy production simulation, grid governance, role-based token authority,
-multisig ownership, emergency recovery, and AI-driven optimization remain
-future extensions.
+Grid governance, role-based token authority, multisig ownership, emergency
+recovery, and AI-driven optimization remain future extensions.
